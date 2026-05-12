@@ -448,7 +448,13 @@ with st.sidebar:
             "Se ausente, é aplicada ponderação uniforme."
         )
 
-    use_demo = st.checkbox("Usar dados de demonstração MCG (9 alts × 6 crit)", value=False)
+    # Importante: key + value=False garantem que ao abrir o URL a checkbox arranca SEMPRE desligada
+    use_demo = st.checkbox(
+        "Usar dados de demonstração MCG (9 alts × 6 crit)",
+        value=False,
+        key="use_demo_data",
+        help="Activa apenas para testar a app sem carregar Excel próprio."
+    )
 
     st.divider()
     st.subheader("🎛️ Parâmetros de modelos")
@@ -486,28 +492,36 @@ def load_excel(file):
     if "Dados" not in xls.sheet_names:
         raise ValueError("A folha 'Dados' não foi encontrada no ficheiro.")
     df = pd.read_excel(xls, sheet_name="Dados")
-    # 1ª coluna = identificador
     id_col = df.columns[0]
     df = df.dropna(subset=[id_col]).reset_index(drop=True)
-    # critérios numéricos
     numeric = df.select_dtypes(include=[np.number]).columns.tolist()
     crits = [c for c in numeric if c != id_col]
     if not crits:
         raise ValueError("Nenhuma coluna numérica de critério foi detectada.")
     df[id_col] = df[id_col].astype(str)
-    # Pesos
-    if "Pesos" in xls.sheet_names:
+
+    has_weights_sheet = "Pesos" in xls.sheet_names
+    if has_weights_sheet:
+        # Lê tudo como texto/raw e converte forçadamente para numérico
         wdf = pd.read_excel(xls, sheet_name="Pesos", header=None)
-        wvals = wdf.select_dtypes(include=[np.number]).values.flatten()
-        wvals = wvals[~np.isnan(wvals)]
+        # Converte cada coluna a numérica (não-numérico → NaN), achata e descarta NaN
+        wvals_all = []
+        for col in wdf.columns:
+            wvals_all.extend(pd.to_numeric(wdf[col], errors="coerce").dropna().tolist())
+        wvals = np.array(wvals_all, dtype=float)
         if len(wvals) >= len(crits):
-            weights = np.array(wvals[:len(crits)], dtype=float)
+            weights = wvals[:len(crits)]
         else:
             weights = np.ones(len(crits))
+            has_weights_sheet = False  # tamanho inválido = trata como ausente
     else:
         weights = np.ones(len(crits))
+    # Normalização e validação
+    if weights.sum() <= 0 or np.any(weights < 0):
+        weights = np.ones(len(crits))
+        has_weights_sheet = False
     weights = weights / weights.sum()
-    return df, weights, id_col, crits
+    return df, weights, id_col, crits, has_weights_sheet
 
 
 # Estado
@@ -519,17 +533,25 @@ weights = None
 id_col = None
 criteria = []
 err_load = None
+has_weights_sheet = False  # True só quando o Excel carregado trazia folha 'Pesos' válida
 
 if use_demo:
     data_df, weights = build_demo_data()
     id_col = "Alternativa"
     criteria = [c for c in data_df.columns if c != id_col]
+    has_weights_sheet = True  # demo já vem com pesos AHP do caso MCG
     st.session_state.loaded = True
 elif uploaded is not None:
     res, err_load = safe_call(load_excel, uploaded)
     if err_load is None:
-        data_df, weights, id_col, criteria = res
+        data_df, weights, id_col, criteria, has_weights_sheet = res
         st.session_state.loaded = True
+        if not has_weights_sheet:
+            st.sidebar.warning(
+                "⚠️ **Folha `Pesos` não encontrada** — a usar pesos uniformes "
+                f"({1/len(criteria):.4f} cada). Para usar pesos AHP, acrescenta a "
+                "folha `Pesos` ao Excel ou edita manualmente na tabela abaixo."
+            )
     else:
         st.sidebar.error(f"❌ {err_load}")
 
@@ -544,14 +566,19 @@ if st.session_state.loaded and data_df is not None:
             "directamente na tabela. Os pesos são normalizados automaticamente."
         )
 
-        # Heurística de defaults: critérios com nome a sugerir custo → 'min'
-        type_defaults = [
-            "min" if any(k in c.lower() for k in [
-                "ee", "custo", "cost", "esforço", "esforco",
-                "prazo", "tempo", "delay", "risk", "risco",
-            ]) else "max"
-            for c in criteria
-        ]
+        # Heurística de defaults — critérios cujo nome sugere custo/minimização
+        def _is_cost_criterion(name: str) -> bool:
+            low = name.lower()
+            # Substrings (palavras longas — sem risco de falso positivo)
+            for sub in ("custo", "cost", "esforço", "esforco", "prazo", "tempo",
+                        "delay", "risk", "risco", "urgenc", "urgênc"):
+                if sub in low:
+                    return True
+            # Tokens curtos — testa apenas como segmento (entre _ ou - ou início/fim)
+            tokens = low.replace("-", "_").split("_")
+            return any(t in {"ee", "ud", "urg", "dias"} for t in tokens)
+
+        type_defaults = ["min" if _is_cost_criterion(c) else "max" for c in criteria]
 
         # Chave dependente dos critérios — força reset quando se troca de ficheiro
         editor_key = f"crit_cfg_{hash(tuple(criteria))}"
@@ -636,6 +663,7 @@ TAB_LABELS = [
     "📋 Visão Geral", "🔺 AHP", "🕸️ ANP", "🎯 TOPSIS", "🔗 ELECTRE",
     "📊 PROMETHEE", "⚖️ VIKOR", "📐 MAUT", "🧮 COPRAS", "🌐 DEMATEL",
     "🌫️ Fuzzy AHP", "🌫️ Fuzzy TOPSIS", "🌫️ Fuzzy ANP", "🏆 Dashboard",
+    "📚 Teoria & Matemática", "📄 Relatório",
 ]
 tabs = st.tabs(TAB_LABELS)
 
@@ -731,6 +759,38 @@ with tabs[1]:
             m3.metric("CR", f"{res['CR']:.4f}",
                       delta="Consistente" if res['consistent'] else "Inconsistente",
                       delta_color="normal" if res['consistent'] else "inverse")
+
+            # Aviso de inconsistência + identificação do par mais problemático
+            if not res['consistent']:
+                # Procura o par (i,j) com maior discrepância entre julgamento e razão de pesos
+                w_ahp = res['weights']
+                worst_pair = None
+                worst_diff = 0
+                for i in range(n):
+                    for j in range(i + 1, n):
+                        if w_ahp[j] != 0:
+                            expected = w_ahp[i] / w_ahp[j]
+                            observed = E[i, j]
+                            if expected > 0:
+                                diff = abs(np.log(observed / expected))
+                                if diff > worst_diff:
+                                    worst_diff = diff
+                                    worst_pair = (i, j, observed, expected)
+                msg = (
+                    f"⚠️ **Matriz inconsistente: CR = {res['CR']:.4f} > 0.10.** "
+                    "Segundo Saaty, julgamentos com CR > 0.10 devem ser revistos."
+                )
+                if worst_pair is not None:
+                    i, j, obs, exp = worst_pair
+                    msg += (
+                        f"\n\nPar mais inconsistente: **{criteria[i]} vs {criteria[j]}** "
+                        f"→ atribuído `{obs:.2f}`, sugerido `{exp:.2f}` "
+                        f"(racio dos pesos calculados). Considera ajustar este julgamento "
+                        "para baixar o CR; depois reavalia."
+                    )
+                st.warning(msg)
+            else:
+                st.success(f"✅ Matriz consistente (CR = {res['CR']:.4f} < 0.10).")
 
             st.subheader("Vector de pesos AHP")
             comp_df = pd.DataFrame({
@@ -1400,3 +1460,499 @@ with tabs[13]:
             )
         except Exception as exc:
             st.error(f"Erro na exportação: {exc}")
+
+# =============================================================================
+# TAB 15 — TEORIA & MATEMÁTICA
+# =============================================================================
+with tabs[14]:
+    st.header("📚 Teoria & Matemática dos Modelos MCDM")
+    st.markdown(
+        "Esta secção descreve a fundamentação matemática de **cada um dos 13 modelos** "
+        "implementados nas tabs anteriores. Pode ser consultada em qualquer momento, "
+        "independentemente dos dados carregados."
+    )
+
+    st.markdown("---")
+    st.subheader("Introdução: o problema MCDM")
+    st.markdown(
+        "Um problema de **Decisão Multicritério** (MCDM, *Multi-Criteria Decision Making*) "
+        "envolve a escolha, ordenação ou classificação de **alternativas** "
+        "$A_1, A_2, \\dots, A_m$ avaliadas segundo **critérios** $C_1, C_2, \\dots, C_n$, "
+        "frequentemente em conflito (e.g., maximizar receita vs. minimizar custo). "
+        "Cada critério tem um **peso** $w_j$ (com $\\sum w_j = 1$) que reflecte a sua importância "
+        "relativa, e um **sentido** (max = benefício, min = custo)."
+    )
+    st.latex(r"""
+    \text{Matriz de decisão:}\quad
+    X = \begin{bmatrix}
+    x_{11} & x_{12} & \cdots & x_{1n} \\
+    x_{21} & x_{22} & \cdots & x_{2n} \\
+    \vdots & \vdots & \ddots & \vdots \\
+    x_{m1} & x_{m2} & \cdots & x_{mn}
+    \end{bmatrix},\quad
+    w = (w_1, w_2, \dots, w_n)
+    """)
+
+    # ============ AHP ============
+    st.markdown("---")
+    st.subheader("1. AHP — Analytic Hierarchy Process (Saaty, 1980)")
+    st.markdown(
+        "Determina pesos $w_j$ a partir de uma **matriz de comparação par-a-par** $A$ "
+        "onde $a_{ij}$ representa quantas vezes o critério $i$ é mais importante que $j$, "
+        "usando a escala de Saaty (1=igual, 3=moderadamente, 5=fortemente, 7=muito fortemente, 9=extremamente)."
+    )
+    st.latex(r"A = [a_{ij}],\quad a_{ji} = 1/a_{ij},\quad a_{ii} = 1")
+    st.markdown("O vector de pesos é o **autovector principal** associado ao maior autovalor $\\lambda_{max}$:")
+    st.latex(r"A\,w = \lambda_{max}\,w")
+    st.markdown("**Verificação de consistência:**")
+    st.latex(r"CI = \frac{\lambda_{max} - n}{n - 1},\quad CR = \frac{CI}{RI(n)}")
+    st.markdown(
+        "Onde $RI(n)$ é o **Random Index** (índice de consistência aleatório) tabelado. "
+        "Saaty considera a matriz consistente se **CR < 0.10**; caso contrário, recomenda revisão dos julgamentos."
+    )
+
+    # ============ ANP ============
+    st.markdown("---")
+    st.subheader("2. ANP — Analytic Network Process (Saaty, 1996)")
+    st.markdown(
+        "Generalização do AHP que captura **dependências entre critérios** (rede em vez de hierarquia). "
+        "Constrói-se uma **supermatriz** $W$ que combina os pesos dos elementos com as influências cruzadas. "
+        "A solução estável é a **matriz limite**:"
+    )
+    st.latex(r"W^\infty = \lim_{k \to \infty} W^k")
+    st.markdown(
+        "Nesta implementação, na ausência de uma matriz de influência elicitada do decisor, "
+        "estimamos a influência inter-critério via **correlações** entre os valores observados:"
+    )
+    st.latex(r"W_{ij} = \frac{|\rho(C_i, C_j)|}{\sum_k |\rho(C_k, C_j)|}")
+    st.markdown(
+        "Os pesos AHP são então modulados pela matriz limite para obter pesos finais "
+        "que reflectem a estrutura de dependências detectada nos dados."
+    )
+
+    # ============ TOPSIS ============
+    st.markdown("---")
+    st.subheader("3. TOPSIS — Technique for Order Preference by Similarity to Ideal Solution (Hwang & Yoon, 1981)")
+    st.markdown("**Passo 1.** Normalização vectorial (Euclidiana) por critério:")
+    st.latex(r"r_{ij} = \frac{x_{ij}}{\sqrt{\sum_{k=1}^m x_{kj}^2}}")
+    st.markdown("**Passo 2.** Ponderação:")
+    st.latex(r"v_{ij} = w_j \cdot r_{ij}")
+    st.markdown("**Passo 3.** Solução ideal $A^+$ e anti-ideal $A^-$:")
+    st.latex(r"""
+    A^+ = \{v_j^+\} = \begin{cases} \max_i v_{ij} & \text{se } j \in J_{\text{max}} \\ \min_i v_{ij} & \text{se } j \in J_{\text{min}} \end{cases}
+    """)
+    st.latex(r"""
+    A^- = \{v_j^-\} = \begin{cases} \min_i v_{ij} & \text{se } j \in J_{\text{max}} \\ \max_i v_{ij} & \text{se } j \in J_{\text{min}} \end{cases}
+    """)
+    st.markdown("**Passo 4.** Distâncias Euclidianas:")
+    st.latex(r"D_i^+ = \sqrt{\sum_{j=1}^n (v_{ij} - v_j^+)^2},\quad D_i^- = \sqrt{\sum_{j=1}^n (v_{ij} - v_j^-)^2}")
+    st.markdown("**Passo 5.** Coeficiente de proximidade ao ideal (quanto maior, melhor):")
+    st.latex(r"C_i^* = \frac{D_i^-}{D_i^+ + D_i^-},\quad 0 \le C_i^* \le 1")
+
+    # ============ ELECTRE I ============
+    st.markdown("---")
+    st.subheader("4. ELECTRE I — ELimination Et Choix Traduisant la REalité (Roy, 1968)")
+    st.markdown(
+        "Constrói **relações de sobreclassificação** binárias: dado um par $(a, b)$, "
+        "$a$ sobreclassifica $b$ ($a \\,S\\, b$) se a evidência a favor é suficiente e contra é fraca."
+    )
+    st.markdown("**Índice de concordância:**")
+    st.latex(r"C(a, b) = \frac{1}{\sum_j w_j} \sum_{j \in J(a,b)} w_j,\quad J(a,b) = \{j : a_j \succeq b_j\}")
+    st.markdown("**Índice de discordância:**")
+    st.latex(r"D(a, b) = \frac{\max_j \{r_{bj} - r_{aj} : r_{bj} > r_{aj}\}}{\max_{j,k,l} |r_{kj} - r_{lj}|}")
+    st.markdown(
+        "Define-se a relação de sobreclassificação com limiares $c$ (concordância) e $d$ (discordância):"
+    )
+    st.latex(r"a\,S\,b \iff C(a,b) \ge c \;\land\; D(a,b) \le d")
+    st.markdown(
+        "O **kernel** é o subconjunto de alternativas que não são sobreclassificadas por nenhuma "
+        "fora do kernel — o conjunto recomendado de candidatas robustas."
+    )
+
+    # ============ PROMETHEE II ============
+    st.markdown("---")
+    st.subheader("5. PROMETHEE II — Preference Ranking Organisation Method (Brans, 1985)")
+    st.markdown("Para cada par $(a, b)$ e critério $j$, define-se a **função de preferência** $P_j(d)$ "
+                "onde $d = x_{aj} - x_{bj}$ (com sinal invertido para critérios de custo):")
+    st.latex(r"""
+    P_j^{\text{usual}}(d) = \begin{cases} 0 & d \le 0 \\ 1 & d > 0 \end{cases}
+    """)
+    st.latex(r"""
+    P_j^{\text{linear}}(d) = \begin{cases} 0 & d \le 0 \\ d/p & 0 < d < p \\ 1 & d \ge p \end{cases}
+    """)
+    st.latex(r"""
+    P_j^{\text{gaussian}}(d) = \begin{cases} 0 & d \le 0 \\ 1 - e^{-d^2/(2\sigma^2)} & d > 0 \end{cases}
+    """)
+    st.markdown("**Grau de preferência agregado:**")
+    st.latex(r"\pi(a, b) = \sum_{j=1}^n w_j \cdot P_j(d_{ab})")
+    st.markdown("**Fluxos de preferência:**")
+    st.latex(r"""
+    \phi^+(a) = \frac{1}{m-1} \sum_{b \ne a} \pi(a, b),\quad
+    \phi^-(a) = \frac{1}{m-1} \sum_{b \ne a} \pi(b, a)
+    """)
+    st.markdown("**Fluxo líquido (ranking PROMETHEE II):**")
+    st.latex(r"\phi(a) = \phi^+(a) - \phi^-(a)")
+
+    # ============ VIKOR ============
+    st.markdown("---")
+    st.subheader("6. VIKOR — VIseKriterijumska Optimizacija I Kompromisno Resenje (Opricovic, 1998)")
+    st.markdown("Procura a **solução de compromisso** entre máxima utilidade do grupo e mínimo arrependimento individual.")
+    st.markdown("Sejam $f_j^* = \\max_i f_{ij}$ (ideal) e $f_j^- = \\min_i f_{ij}$ (anti-ideal) por critério.")
+    st.latex(r"S_i = \sum_{j=1}^n w_j \frac{f_j^* - f_{ij}}{f_j^* - f_j^-}")
+    st.latex(r"R_i = \max_j \left[ w_j \frac{f_j^* - f_{ij}}{f_j^* - f_j^-} \right]")
+    st.latex(r"Q_i = v \cdot \frac{S_i - S^*}{S^- - S^*} + (1-v) \cdot \frac{R_i - R^*}{R^- - R^*}")
+    st.markdown(
+        "$S_i$ representa **utilidade de grupo** (distância à ideal), $R_i$ representa **arrependimento individual** "
+        "(pior critério para a alternativa $i$). O parâmetro $v \\in [0,1]$ regula a estratégia: $v=1$ privilegia utilidade, $v=0$ privilegia equidade. A melhor alternativa é a de **menor $Q_i$**."
+    )
+
+    # ============ MAUT ============
+    st.markdown("---")
+    st.subheader("7. MAUT — Multi-Attribute Utility Theory (Keeney & Raiffa, 1976)")
+    st.markdown(
+        "Forma simples de utilidade linear aditiva. Cada valor é convertido numa **utilidade parcial** "
+        "$u_j(x_{ij}) \\in [0, 1]$ via normalização min-max (com inversão para custos):"
+    )
+    st.latex(r"""
+    u_j(x_{ij}) = \begin{cases}
+    \dfrac{x_{ij} - \min_k x_{kj}}{\max_k x_{kj} - \min_k x_{kj}} & \text{(benefício)} \\[6pt]
+    \dfrac{\max_k x_{kj} - x_{ij}}{\max_k x_{kj} - \min_k x_{kj}} & \text{(custo)}
+    \end{cases}
+    """)
+    st.markdown("**Utilidade global** (ranking por valor decrescente):")
+    st.latex(r"U_i = \sum_{j=1}^n w_j \cdot u_j(x_{ij})")
+
+    # ============ COPRAS ============
+    st.markdown("---")
+    st.subheader("8. COPRAS — COmplex PRoportional ASsessment (Zavadskas & Kaklauskas, 1996)")
+    st.markdown("Separa critérios em **benefícios** ($J^+$) e **custos** ($J^-$) e calcula utilidades parciais ponderadas:")
+    st.latex(r"""
+    S_i^+ = \sum_{j \in J^+} w_j \cdot \bar{x}_{ij},\quad
+    S_i^- = \sum_{j \in J^-} w_j \cdot \bar{x}_{ij}
+    """)
+    st.markdown("**Importância relativa:**")
+    st.latex(r"""
+    Q_i = S_i^+ + \frac{\min_k S_k^- \cdot \sum_{k=1}^m (1/S_k^-)}{S_i^- \cdot \sum_{k=1}^m (1/S_k^-)}
+    """)
+    st.markdown("**Grau de utilidade** (normalizado a 100):")
+    st.latex(r"N_i = \frac{Q_i}{\max_k Q_k} \times 100\,\%")
+
+    # ============ DEMATEL ============
+    st.markdown("---")
+    st.subheader("9. DEMATEL — Decision Making Trial and Evaluation Laboratory (Gabus & Fontela, 1972)")
+    st.markdown(
+        "Modela **influências causais entre critérios**. Partindo de uma matriz de relação directa $Z$ "
+        "(aqui estimada por correlações, na ausência de elicitação directa), normaliza-se:"
+    )
+    st.latex(r"X = \frac{Z}{\max\left(\max_i \sum_j z_{ij},\; \max_j \sum_i z_{ij}\right)}")
+    st.markdown("A **matriz de relação total** é obtida por:")
+    st.latex(r"T = X \cdot (I - X)^{-1}")
+    st.markdown("Definem-se as somas $D_i = \\sum_j t_{ij}$ (influência exercida) e $R_i = \\sum_j t_{ji}$ (influência recebida).")
+    st.latex(r"""
+    \begin{aligned}
+    D + R & \quad \text{(prominência — importância global do critério)} \\
+    D - R & \quad \text{(relação — causal se positivo, efeito se negativo)}
+    \end{aligned}
+    """)
+
+    # ============ FUZZY AHP ============
+    st.markdown("---")
+    st.subheader("10. Fuzzy AHP (Chang, 1996)")
+    st.markdown(
+        "Estende o AHP usando **números triangulares fuzzy** (TFN) para capturar incerteza nos julgamentos. "
+        "Um TFN é representado por um tuplo $(l, m, u)$ — limite inferior, valor central, limite superior."
+    )
+    st.latex(r"\tilde{a} = (l, m, u),\quad l \le m \le u")
+    st.markdown("Para defuzzificar (obter um peso crisp), usa-se o **método do centro de área**:")
+    st.latex(r"w^{\text{crisp}} = \frac{l + m + u}{3}")
+    st.markdown(
+        "Nesta implementação, os pesos crisp do AHP são expandidos em TFNs com spread $\\pm 20\\%$ "
+        "como aproximação inicial; em aplicações reais, o decisor especifica directamente os TFNs."
+    )
+
+    # ============ FUZZY TOPSIS ============
+    st.markdown("---")
+    st.subheader("11. Fuzzy TOPSIS (Chen, 2000)")
+    st.markdown("Aplica o TOPSIS clássico a uma matriz de decisão fuzzy. Cada elemento é um TFN $\\tilde{x}_{ij} = (l_{ij}, m_{ij}, u_{ij})$.")
+    st.markdown("A **distância entre TFNs** (método do vértice):")
+    st.latex(r"""
+    d(\tilde{a}, \tilde{b}) = \sqrt{\frac{1}{3}\left[(a_l - b_l)^2 + (a_m - b_m)^2 + (a_u - b_u)^2\right]}
+    """)
+    st.markdown(
+        "Calculam-se a **Fuzzy Positive Ideal Solution** (FPIS) e a **Fuzzy Negative Ideal Solution** (FNIS) "
+        "e o coeficiente de proximidade fuzzy:"
+    )
+    st.latex(r"CC_i = \frac{d_i^-}{d_i^+ + d_i^-}")
+
+    # ============ FUZZY ANP ============
+    st.markdown("---")
+    st.subheader("12. Fuzzy ANP (Mikhailov, 2003)")
+    st.markdown(
+        "Combina os pesos fuzzy do Fuzzy AHP com a estrutura de supermatriz do ANP. "
+        "Permite modelar simultaneamente **incerteza** (via TFN) e **dependências entre critérios** "
+        "(via supermatriz de influência). Os pesos defuzzificados são propagados pela matriz limite "
+        "para obter pesos finais que reflectem ambos os aspectos."
+    )
+
+    # ============ Agregação ============
+    st.markdown("---")
+    st.subheader("13. Ranking Consolidado — Método de Borda invertido")
+    st.markdown(
+        "Para agregar os rankings dos vários modelos, usa-se a **média de posições** "
+        "(uma variante do método de Borda): a alternativa com menor média de ranking "
+        "é a recomendada agregadamente."
+    )
+    st.latex(r"\bar{r}_i = \frac{1}{K} \sum_{k=1}^K r_{ik}")
+    st.markdown(
+        "Onde $r_{ik}$ é a posição da alternativa $i$ no modelo $k$, e $K$ é o número total de modelos. "
+        "Calcula-se também a **convergência Top-3**: percentagem dos modelos que colocam cada "
+        "alternativa nas três primeiras posições — indicador de robustez."
+    )
+
+    st.markdown("---")
+    st.subheader("Referências bibliográficas")
+    st.markdown(
+        "- Saaty, T. L. (1980). *The Analytic Hierarchy Process*. McGraw-Hill.\n"
+        "- Saaty, T. L. (1996). *Decision Making with Dependence and Feedback: The Analytic Network Process*. RWS.\n"
+        "- Hwang, C.-L., Yoon, K. (1981). *Multiple Attribute Decision Making: Methods and Applications*. Springer.\n"
+        "- Roy, B. (1968). Classement et choix en présence de points de vue multiples (méthode ELECTRE). *RIRO* 8.\n"
+        "- Brans, J. P., Vincke, P. (1985). A Preference Ranking Organisation Method. *Management Science* 31(6).\n"
+        "- Opricovic, S., Tzeng, G.-H. (2004). Compromise solution by MCDM methods. *EJOR* 156(2).\n"
+        "- Keeney, R. L., Raiffa, H. (1976). *Decisions with Multiple Objectives*. Wiley.\n"
+        "- Zavadskas, E. K., Kaklauskas, A. (1996). *Multiple Criteria Evaluation of Buildings*. Vilnius Tech.\n"
+        "- Gabus, A., Fontela, E. (1972). *World Problems, an Invitation to Further Thought*. Battelle.\n"
+        "- Chang, D.-Y. (1996). Applications of the extent analysis method on fuzzy AHP. *EJOR* 95(3).\n"
+        "- Chen, C.-T. (2000). Extensions of the TOPSIS for group decision-making under fuzzy environment. *Fuzzy Sets and Systems* 114(1).\n"
+        "- Mikhailov, L. (2003). Deriving priorities from fuzzy pairwise comparison judgments. *Fuzzy Sets and Systems* 134(3)."
+    )
+
+
+# =============================================================================
+# TAB 16 — RELATÓRIO (DINÂMICO)
+# =============================================================================
+with tabs[15]:
+    st.header("📄 Relatório de Análise Multicritério")
+
+    if not st.session_state.loaded:
+        need_data()
+    elif not all_results:
+        st.warning("⚠️ Nenhum modelo foi executado com sucesso. Visita as tabs anteriores primeiro.")
+    else:
+        mat = get_matrix()
+        alts = data_df[id_col].tolist()
+        n_alt = len(alts)
+        n_crit = len(criteria)
+        n_max = types.count("max")
+        n_min = types.count("min")
+
+        # ===== Sumário executivo =====
+        models_with_results = list(all_results.keys())
+
+        # Calcula ranking consolidado (Borda invertido)
+        rank_table_rel = pd.DataFrame({"Alternativa": alts})
+        for m in models_with_results:
+            rank_table_rel[m] = all_results[m]["ranking"]
+        rank_table_rel["Posição Média"] = rank_table_rel[models_with_results].mean(axis=1)
+        rank_table_rel = rank_table_rel.sort_values("Posição Média").reset_index(drop=True)
+
+        top3_alts_rel = rank_table_rel["Alternativa"].head(3).tolist()
+        top1 = top3_alts_rel[0] if len(top3_alts_rel) > 0 else "—"
+
+        # Convergência: quantos modelos têm a top-1 no top-3?
+        if top1 != "—":
+            top1_row = rank_table_rel[rank_table_rel["Alternativa"] == top1].iloc[0]
+            top1_in_top3 = sum(1 for m in models_with_results if top1_row[m] <= 3)
+            conv_pct = (top1_in_top3 / len(models_with_results)) * 100
+        else:
+            top1_in_top3 = 0
+            conv_pct = 0
+
+        # Estatísticas dos critérios (para relatório)
+        stats = data_df[criteria].describe().T
+
+        st.markdown(
+            f"**Data:** {pd.Timestamp.now().strftime('%d/%m/%Y %H:%M')}  \n"
+            f"**Modelos aplicados com sucesso:** {len(models_with_results)} / 13  \n"
+            f"**Alternativas avaliadas:** {n_alt}  \n"
+            f"**Critérios:** {n_crit} ({n_max} benefício · {n_min} custo)"
+        )
+
+        # ===== Construção do relatório em markdown (downloadable) =====
+        report_lines = []
+        report_lines.append(f"# Relatório de Análise Multicritério\n")
+        report_lines.append(f"**Gerado em:** {pd.Timestamp.now().strftime('%d/%m/%Y %H:%M')}\n")
+
+        # 1. Sumário executivo
+        report_lines.append("## 1. Sumário executivo\n")
+        report_lines.append(
+            f"Foi realizada uma análise de decisão multicritério sobre **{n_alt} alternativas** "
+            f"avaliadas segundo **{n_crit} critérios** ({n_max} de benefício e {n_min} de custo). "
+            f"Foram aplicados **{len(models_with_results)} modelos** MCDM "
+            f"({', '.join(models_with_results)}), agregados por método de Borda invertido "
+            f"(média de posições).\n"
+        )
+        report_lines.append(
+            f"**Alternativa recomendada:** `{top1}`, com posição média de "
+            f"`{rank_table_rel['Posição Média'].iloc[0]:.2f}`. "
+            f"Aparece no Top-3 em **{top1_in_top3} de {len(models_with_results)}** modelos "
+            f"({conv_pct:.0f}% de convergência inter-modelo).\n"
+        )
+        if len(top3_alts_rel) >= 3:
+            report_lines.append(
+                f"**Top-3 agregado:** 1º `{top3_alts_rel[0]}` · "
+                f"2º `{top3_alts_rel[1]}` · 3º `{top3_alts_rel[2]}`\n"
+            )
+
+        # 2. Contexto e dados
+        report_lines.append("## 2. Contexto e dados de entrada\n")
+        report_lines.append("### 2.1 Critérios, pesos e sentidos\n")
+        report_lines.append("| Critério | Peso | Sentido |")
+        report_lines.append("|----------|------|---------|")
+        for c, w, t in zip(criteria, weights, types):
+            report_lines.append(f"| {c} | {w:.4f} | {t} |")
+        report_lines.append("")
+
+        report_lines.append("### 2.2 Estatísticas descritivas dos critérios\n")
+        report_lines.append("| Critério | Mín | Mediana | Máx | Média | Desvio padrão |")
+        report_lines.append("|----------|-----|---------|-----|-------|---------------|")
+        for c in criteria:
+            s = stats.loc[c]
+            report_lines.append(
+                f"| {c} | {s['min']:.4g} | {s['50%']:.4g} | {s['max']:.4g} | "
+                f"{s['mean']:.4g} | {s['std']:.4g} |"
+            )
+        report_lines.append("")
+
+        # 3. Metodologia
+        report_lines.append("## 3. Metodologia\n")
+        report_lines.append(
+            "Foram aplicados os seguintes modelos (ver Tab `Teoria & Matemática` para fundamentação):\n"
+        )
+        for m in models_with_results:
+            report_lines.append(f"- **{m}**")
+        report_lines.append("")
+        report_lines.append(
+            "Para cada modelo foram registados o **score** e o **ranking** por alternativa. "
+            "Os rankings foram agregados por **média de posições** (Borda invertido) — "
+            "a alternativa com menor média é a recomendação final.\n"
+        )
+
+        # 4. Resultados por modelo
+        report_lines.append("## 4. Resultados por modelo\n")
+        report_lines.append("Top-3 alternativas em cada modelo:\n")
+        report_lines.append("| Modelo | 1º | 2º | 3º |")
+        report_lines.append("|--------|-----|-----|-----|")
+        for m in models_with_results:
+            rank_m = all_results[m]["ranking"]
+            top_indices = sorted(range(len(rank_m)), key=lambda i: rank_m[i])[:3]
+            top_names = [alts[i] for i in top_indices]
+            row = f"| {m} |"
+            for i in range(3):
+                row += f" {top_names[i] if i < len(top_names) else '—'} |"
+            report_lines.append(row)
+        report_lines.append("")
+
+        # 5. Ranking consolidado
+        report_lines.append("## 5. Ranking consolidado (Borda invertido)\n")
+        report_lines.append("| Posição | Alternativa | Posição média |")
+        report_lines.append("|---------|-------------|---------------|")
+        for i, row in rank_table_rel.head(min(10, n_alt)).iterrows():
+            report_lines.append(
+                f"| {i+1} | {row['Alternativa']} | {row['Posição Média']:.2f} |"
+            )
+        report_lines.append("")
+
+        # 6. Convergência e robustez
+        report_lines.append("## 6. Análise de convergência e robustez\n")
+        report_lines.append(
+            f"A alternativa Top-1 (`{top1}`) aparece no Top-3 de **{top1_in_top3}/{len(models_with_results)}** "
+            f"modelos avaliados, indicando uma robustez de **{conv_pct:.0f}%**.\n"
+        )
+        # Convergência por alternativa Top-3
+        report_lines.append("Convergência Top-3 por alternativa (nº de modelos que colocam no Top-3):\n")
+        report_lines.append("| Alternativa | Modelos com Top-3 | % |")
+        report_lines.append("|-------------|-------------------|---|")
+        for alt in alts:
+            row = rank_table_rel[rank_table_rel["Alternativa"] == alt].iloc[0]
+            n_top3 = sum(1 for m in models_with_results if row[m] <= 3)
+            if n_top3 > 0:
+                report_lines.append(
+                    f"| {alt} | {n_top3}/{len(models_with_results)} | "
+                    f"{(n_top3/len(models_with_results))*100:.0f}% |"
+                )
+        report_lines.append("")
+
+        # 7. Recomendação
+        report_lines.append("## 7. Recomendação\n")
+        if conv_pct >= 60:
+            verd = (
+                f"A análise apresenta **alta convergência** ({conv_pct:.0f}%) "
+                f"em torno da alternativa `{top1}`. **Recomenda-se a sua selecção** com "
+                f"elevado grau de confiança."
+            )
+        elif conv_pct >= 40:
+            verd = (
+                f"A análise apresenta **convergência moderada** ({conv_pct:.0f}%) "
+                f"em torno da alternativa `{top1}`. Recomenda-se selecção, mas com **análise "
+                f"complementar de sensibilidade** aos pesos."
+            )
+        else:
+            verd = (
+                f"A análise apresenta **baixa convergência** ({conv_pct:.0f}%). "
+                f"Recomenda-se reavaliação dos pesos e/ou alargamento do conjunto de alternativas "
+                f"antes de decidir."
+            )
+        report_lines.append(verd + "\n")
+
+        # 8. Limitações
+        report_lines.append("## 8. Limitações e observações\n")
+        if "AHP" in all_results and "weights" in all_results["AHP"]:
+            ahp_w = all_results["AHP"]["weights"]
+            max_diff = max(abs(ahp_w - weights))
+            if max_diff > 0.05:
+                report_lines.append(
+                    f"- Os pesos AHP calculados na tab AHP diferem dos pesos correntes em até "
+                    f"`{max_diff:.4f}`. Considera aplicar os pesos AHP para resultados mais coerentes "
+                    f"com o método.\n"
+                )
+        report_lines.append(
+            "- ANP, DEMATEL e variantes Fuzzy ANP usam **proxy data-driven** "
+            "(correlações entre critérios) para estimar dependências. Numa aplicação "
+            "rigorosa, esta matriz seria elicitada directamente do decisor.\n"
+            "- Fuzzy AHP/TOPSIS usam **spread fixo** (±10%-20%) como aproximação dos TFN. "
+            "Em aplicações reais o decisor define o spread por julgamento.\n"
+            "- Todas as escalas ordinais (e.g., 1-5) são tratadas como contínuas para fins de normalização.\n"
+        )
+
+        # Junta tudo
+        report_md = "\n".join(report_lines)
+
+        # ===== Apresentação na tab =====
+        st.subheader(f"🥇 Alternativa recomendada: {top1}")
+        st.metric(
+            "Convergência inter-modelo (Top-1 no Top-3)",
+            f"{conv_pct:.0f}%",
+            f"{top1_in_top3} / {len(models_with_results)} modelos"
+        )
+
+        st.markdown("---")
+        st.markdown(report_md)
+
+        # Download como .md e .txt
+        st.markdown("---")
+        st.subheader("📥 Descarregar relatório")
+        c1, c2 = st.columns(2)
+        with c1:
+            st.download_button(
+                "Descarregar como Markdown (.md)",
+                data=report_md.encode("utf-8"),
+                file_name=f"relatorio_mcdm_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.md",
+                mime="text/markdown",
+            )
+        with c2:
+            st.download_button(
+                "Descarregar como texto (.txt)",
+                data=report_md.encode("utf-8"),
+                file_name=f"relatorio_mcdm_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.txt",
+                mime="text/plain",
+            )
