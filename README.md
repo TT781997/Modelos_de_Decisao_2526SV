@@ -13,7 +13,7 @@ A app é totalmente dinâmica: aceita qualquer Excel com N alternativas × M cri
 3. [Formato do ficheiro Excel](#formato-do-ficheiro-excel)
 4. [Como usar a webapp](#como-usar-a-webapp)
 5. [Modelos implementados](#modelos-implementados)
-6. [Estrutura das 14 abas](#estrutura-das-14-abas)
+6. [Estrutura das 16 abas](#estrutura-das-16-abas)
 7. [Deploy online (live)](#deploy-online-live)
 8. [Troubleshooting](#troubleshooting)
 9. [Notas metodológicas](#notas-metodológicas)
@@ -114,11 +114,26 @@ ou em formato horizontal:
 
 | 0,4615 | 0,1987 | 0,0230 | 0,0972 | 0,0217 | 0,1979 |
 
-Os pesos são automaticamente normalizados (somatório = 1). Se a folha `Pesos` não existir, são aplicados pesos uniformes (1/M) e podes editá-los na sidebar.
+Os pesos são automaticamente normalizados (somatório = 1). **Se a folha `Pesos` não existir**, a app aplica pesos uniformes (1/M) e mostra um aviso amarelo na sidebar. Para o caso MCG, os pesos uniformes (≈ 0.1667) são incorrectos — usa os pesos AHP de Q5.2.
+
+> ⚠️ **Atenção ao caso MCG:** o ficheiro `Dados_MCG.xlsx` (entregue junto à app) já tem a folha `Pesos` pré-preenchida com os pesos AHP correctos: C1_VP=0.4615, C2_PF=0.1987, C3_EE=0.0230, C4_FE=0.0972, C5_UD=0.0217, C6_RC=0.1979.
+
+### Sentido dos critérios (configurado na sidebar, não no Excel)
+
+| Critério | Sentido | Justificação |
+|----------|---------|--------------|
+| C1_VP | `max` | Valor potencial em €/ano — quanto maior, melhor |
+| C2_PF | `max` | Probabilidade de fecho — quanto maior, melhor |
+| **C3_EE** | **`min`** | **Esforço estimado (horas/semana) — quanto menor, melhor** |
+| C4_FE | `max` | Fit estratégico (1-5) — quanto maior, melhor |
+| **C5_UD** | **`min`** | **Urgência (dias até decisão) — quanto menos dias, mais urgente / melhor** |
+| C6_RC | `max` | Relacionamento com cliente (1-5) — quanto maior, melhor |
+
+A heurística da app detecta automaticamente sufixos `_EE`, `_UD`, `_custo`, `_prazo`, etc. mas confirma sempre na tabela da sidebar antes de correr a análise.
 
 ### Modo de demonstração
 
-Se não tiveres ficheiro à mão, activa na sidebar **"Usar dados de demonstração MCG"** — carrega os 9 alts × 6 critérios do caso de estudo com pesos AHP pré-calculados.
+Se não tiveres ficheiro à mão, activa na sidebar **"Usar dados de demonstração MCG"** — carrega os 9 alts × 6 critérios do caso de estudo com pesos AHP pré-calculados. **A checkbox arranca sempre desligada** ao abrir o URL: cada visitante começa sem dados activos.
 
 ---
 
@@ -205,12 +220,12 @@ No dashboard final, todas as posições por modelo são agregadas por **média d
 
 ---
 
-## Estrutura das 14 abas
+## Estrutura das 16 abas
 
 | # | Aba | Conteúdo principal |
 |---|-----|--------------------|
 | 1 | **Visão Geral** | Matriz de decisão, pesos, sentidos, descritivas, heatmap normalizado |
-| 2 | **AHP** | Matriz Saaty editável, λ_max, CI, CR, pesos AHP, ranking, botão para aplicar pesos globalmente |
+| 2 | **AHP** | Matriz Saaty editável, λ_max, CI, CR, **aviso de inconsistência + par mais problemático**, pesos AHP, ranking |
 | 3 | **ANP** | Pesos ajustados, matriz limite, ranking |
 | 4 | **TOPSIS** | Matrizes normalizada/ponderada, A+/A−, D+/D−, Ci*, ranking, sensibilidade com error bars |
 | 5 | **ELECTRE** | Matrizes C e D, sobreclassificação, kernel, mapa de estabilidade c×d |
@@ -222,9 +237,11 @@ No dashboard final, todas as posições por modelo são agregadas por **média d
 | 11 | **Fuzzy AHP** | Pesos fuzzy triangulares + defuzzificação |
 | 12 | **Fuzzy TOPSIS** | d+/d−, CC, slider de spread |
 | 13 | **Fuzzy ANP** | Pesos fuzzy + ajuste supermatriz |
-| 14 | **Dashboard** | Tabela cruzada, heatmap de posições, radar Top-3, painel de recomendação, export Excel |
+| 14 | **Dashboard Consolidado** | Tabela cruzada, heatmap de posições, radar Top-3, painel de recomendação, export Excel |
+| 15 | **📚 Teoria & Matemática** | Fundamentação matemática completa de cada modelo (fórmulas em LaTeX, referências bibliográficas) |
+| 16 | **📄 Relatório** | Relatório dinâmico gerado a partir dos dados carregados (sumário executivo, contexto, metodologia, resultados por modelo, ranking agregado, recomendação, limitações). Download em `.md` ou `.txt` |
 
-O **export Excel** na aba 14 gera um ficheiro `mcdm_resultados.xlsx` com folhas para Dados, Pesos_e_Tipos, Rankings e Scores, pronto para anexar ao relatório.
+O **export Excel** na aba 14 gera um ficheiro `mcdm_resultados.xlsx` com folhas para Dados, Pesos_e_Tipos, Rankings e Scores. A aba **Relatório** gera um documento dinâmico com 8 secções (sumário executivo → recomendação → limitações), totalmente baseado nos dados de entrada — nenhum texto hardcoded sobre alternativas ou critérios específicos.
 
 ---
 
@@ -297,8 +314,11 @@ O que **podes** fazer no github.io: criar uma landing page estática (com texto,
 ### Erro `Folha 'Dados' não foi encontrada`
 - Verifica o nome da folha no Excel — tem de ser exactamente `Dados` (sensível a maiúsculas/minúsculas).
 
+### Pesos aparecem como 0.1667 / pesos uniformes
+- O Excel não tem folha `Pesos` ou os valores numéricos não foram detectados. A sidebar mostra um aviso amarelo. **Solução:** acrescenta uma folha `Pesos` ao Excel com os pesos AHP (uma coluna ou linha de valores numéricos) — ou usa o `Dados_MCG.xlsx` template que já vem pré-preenchido.
+
 ### Critério de custo está a ser tratado como benefício
-- Na sidebar, em "Sentido dos critérios", muda manualmente para `min` o critério em causa.
+- Na sidebar, na tabela "Configuração de critérios", muda `Sentido` para `min` na linha do critério em causa. A heurística automática captura nomes com `_EE`, `_UD`, `custo`, `prazo`, `tempo`, etc. mas pode falhar em nomes não-standard.
 
 ### AHP devolve CR > 0,10 (inconsistente)
 - A matriz par-a-par tem julgamentos contraditórios. Identifica as comparações mais extremas (valores ≥ 7) e ajusta-as gradualmente. A app continua a calcular pesos mesmo com CR alto, mas reporta-o.
