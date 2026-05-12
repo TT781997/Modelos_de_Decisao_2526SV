@@ -1126,6 +1126,7 @@ with tabs[12]:
 
             all_results["Fuzzy ANP"] = {"scores": res["scores"], "ranking": res["ranking"]}
 
+
 # TAB 14 — DASHBOARD CONSOLIDADO
 with tabs[14]:
     st.header("🏆 Dashboard Consolidado")
