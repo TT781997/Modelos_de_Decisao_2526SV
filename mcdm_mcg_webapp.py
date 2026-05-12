@@ -3,16 +3,12 @@
 MCDM Dashboard — Sistema de Apoio à Decisão Multicritério
 Modelos de Decisão | MEGI ISEL 2025/2026 | Caso de Estudo MCG
 
-VERSÃO FINAL COMPLETA E FUNCIONAL (12/05/2026)
-✅ use_demo = False por defeito
-✅ Pesos AHP do Q5.2 carregados por defeito (C1_VP ≈ 0.4615)
-✅ C5_UD = min (forçado por mapeamento rígido)
-✅ Todos os gráficos originais restaurados
-✅ Tab Teoria MCDM completa com LaTeX
-✅ Tab Relatório
-✅ st.session_state (resultados persistem ao mudar de tab)
-✅ Índices das tabs corrigidos (sem sobreposição)
-✅ Indentação 100% correta (sem IndentationError)
+Aplicação Streamlit single-file com 14 abas:
+Visão Geral, AHP, ANP, TOPSIS, ELECTRE, PROMETHEE, VIKOR, MAUT,
+COPRAS, DEMATEL, Fuzzy AHP, Fuzzy TOPSIS, Fuzzy ANP, Dashboard Consolidado.
+
+Execução: streamlit run app.py
+Requisitos: streamlit pandas numpy scipy openpyxl plotly
 """
 
 import io
@@ -41,6 +37,7 @@ st.markdown(
     .block-container { padding-top: 1.5rem; padding-bottom: 2rem; }
     h1 { letter-spacing: -0.02em; }
     .stMetric { background: rgba(120,120,120,0.06); padding: 0.6rem; border-radius: 8px; }
+    div[data-testid="stExpander"] details { border-radius: 8px; }
     </style>
     """,
     unsafe_allow_html=True,
@@ -58,13 +55,15 @@ RI_TABLE = {1: 0.0, 2: 0.0, 3: 0.58, 4: 0.90, 5: 1.12, 6: 1.24,
 
 
 def safe_call(fn, *args, **kwargs):
+    """Executa uma função e devolve (resultado, erro_str). Nunca rebenta o Streamlit."""
     try:
         return fn(*args, **kwargs), None
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         return None, f"{type(exc).__name__}: {exc}"
 
 
 def normalize_vector(mat):
+    """Normalização vectorial (Euclidiana) por critério — usada no TOPSIS."""
     mat = np.asarray(mat, dtype=float)
     denom = np.sqrt(np.sum(mat ** 2, axis=0))
     denom = np.where(denom == 0, 1.0, denom)
@@ -72,6 +71,7 @@ def normalize_vector(mat):
 
 
 def normalize_minmax(mat, types):
+    """Normalização min-max com inversão para critérios de minimização."""
     mat = np.asarray(mat, dtype=float)
     out = np.zeros_like(mat)
     for j in range(mat.shape[1]):
@@ -88,6 +88,7 @@ def normalize_minmax(mat, types):
 
 
 def normalize_sum(mat, types):
+    """Normalização por soma com inversão para minimização (1/x)."""
     mat = np.asarray(mat, dtype=float)
     out = np.zeros_like(mat)
     for j in range(mat.shape[1]):
@@ -103,6 +104,7 @@ def normalize_sum(mat, types):
 
 
 def ranking_from_scores(scores, higher_is_better=True):
+    """Devolve posições no ranking (1 = melhor)."""
     scores = np.asarray(scores, dtype=float)
     order = np.argsort(-scores if higher_is_better else scores)
     rank = np.zeros(len(scores), dtype=int)
@@ -111,22 +113,38 @@ def ranking_from_scores(scores, higher_is_better=True):
 
 
 # =============================================================================
-# MODELOS MCDM (todas as funções originais do ficheiro)
+# MODELOS MCDM
 # =============================================================================
+
 def model_topsis(mat, weights, types):
     norm = normalize_vector(mat)
     weighted = norm * weights
-    ideal = np.array([weighted[:, j].max() if types[j] == "max" else weighted[:, j].min() for j in range(mat.shape[1])])
-    anti = np.array([weighted[:, j].min() if types[j] == "max" else weighted[:, j].max() for j in range(mat.shape[1])])
+    ideal = np.array([
+        weighted[:, j].max() if types[j] == "max" else weighted[:, j].min()
+        for j in range(mat.shape[1])
+    ])
+    anti = np.array([
+        weighted[:, j].min() if types[j] == "max" else weighted[:, j].max()
+        for j in range(mat.shape[1])
+    ])
     d_plus = np.sqrt(np.sum((weighted - ideal) ** 2, axis=1))
     d_minus = np.sqrt(np.sum((weighted - anti) ** 2, axis=1))
     denom = np.where((d_plus + d_minus) == 0, 1e-9, d_plus + d_minus)
     ci = d_minus / denom
-    return {"normalized": norm, "weighted": weighted, "ideal": ideal, "anti_ideal": anti,
-            "d_plus": d_plus, "d_minus": d_minus, "scores": ci, "ranking": ranking_from_scores(ci)}
+    return {
+        "normalized": norm,
+        "weighted": weighted,
+        "ideal": ideal,
+        "anti_ideal": anti,
+        "d_plus": d_plus,
+        "d_minus": d_minus,
+        "scores": ci,
+        "ranking": ranking_from_scores(ci),
+    }
 
 
 def preference(d, ftype="usual", p=None, q=None, sigma=None):
+    """Funções de preferência PROMETHEE."""
     if d <= 0:
         return 0.0
     if ftype == "usual":
@@ -173,17 +191,24 @@ def model_promethee(mat, weights, types, function="linear"):
     phi_plus = pref.sum(axis=1) / div
     phi_minus = pref.sum(axis=0) / div
     phi_net = phi_plus - phi_minus
-    return {"preference_matrix": pref, "phi_plus": phi_plus, "phi_minus": phi_minus,
-            "scores": phi_net, "ranking": ranking_from_scores(phi_net)}
+    return {
+        "preference_matrix": pref,
+        "phi_plus": phi_plus,
+        "phi_minus": phi_minus,
+        "scores": phi_net,
+        "ranking": ranking_from_scores(phi_net),
+    }
 
 
 def model_electre(mat, weights, types, c_thresh=0.6, d_thresh=0.4):
     n_alt, n_crit = mat.shape
     norm = normalize_minmax(mat, types)
     w_sum = weights.sum() if weights.sum() > 0 else 1.0
+
     concordance = np.zeros((n_alt, n_alt))
     discordance = np.zeros((n_alt, n_alt))
     global_range = max(norm.max() - norm.min(), 1e-9)
+
     for i in range(n_alt):
         for k in range(n_alt):
             if i == k:
@@ -192,17 +217,28 @@ def model_electre(mat, weights, types, c_thresh=0.6, d_thresh=0.4):
             concordance[i, k] = c / w_sum
             diffs = [norm[k, j] - norm[i, j] for j in range(n_crit) if norm[k, j] > norm[i, j]]
             discordance[i, k] = (max(diffs) / global_range) if diffs else 0.0
+
     outrank = (concordance >= c_thresh) & (discordance <= d_thresh)
     np.fill_diagonal(outrank, False)
+
     kernel = []
     for i in range(n_alt):
-        dominated = any(outrank[k, i] and not outrank[i, k] for k in range(n_alt) if k != i)
+        dominated = any(
+            outrank[k, i] and not outrank[i, k]
+            for k in range(n_alt) if k != i
+        )
         if not dominated:
             kernel.append(i)
+
     net_dominance = outrank.sum(axis=1) - outrank.sum(axis=0)
-    return {"concordance": concordance, "discordance": discordance, "outrank": outrank,
-            "kernel": kernel, "scores": net_dominance.astype(float),
-            "ranking": ranking_from_scores(net_dominance.astype(float))}
+    return {
+        "concordance": concordance,
+        "discordance": discordance,
+        "outrank": outrank,
+        "kernel": kernel,
+        "scores": net_dominance.astype(float),
+        "ranking": ranking_from_scores(net_dominance.astype(float)),
+    }
 
 
 def model_ahp(pairwise):
@@ -260,12 +296,14 @@ def model_copras(mat, weights, types):
 
 
 def model_maut(mat, weights, types):
+    """MAUT — utilidade linear aditiva (forma simples e robusta)."""
     norm = normalize_minmax(mat, types)
     U = (norm * weights).sum(axis=1)
     return {"utility_matrix": norm, "scores": U, "ranking": ranking_from_scores(U)}
 
 
 def _influence_supermatrix(mat):
+    """Constrói matriz de influência inter-critério a partir de correlações."""
     try:
         corr = np.corrcoef(mat.T)
         corr = np.nan_to_num(np.abs(corr), nan=0.0)
@@ -278,6 +316,7 @@ def _influence_supermatrix(mat):
 
 
 def _limit_matrix(M, iters=60, tol=1e-9):
+    """Eleva a supermatriz a potências sucessivas até convergir."""
     prev = M.copy()
     for _ in range(iters):
         nxt = prev @ M
@@ -288,6 +327,7 @@ def _limit_matrix(M, iters=60, tol=1e-9):
 
 
 def model_anp(mat, weights, types):
+    """ANP simplificado — usa supermatriz de influência inter-critério (proxy via correlação)."""
     M = _influence_supermatrix(mat)
     L = _limit_matrix(M)
     adj = L @ weights
@@ -299,6 +339,7 @@ def model_anp(mat, weights, types):
 
 
 def model_dematel(mat, weights, types):
+    """DEMATEL — modela influências entre critérios; usa prominência como modulador dos pesos."""
     try:
         Z = np.abs(np.corrcoef(mat.T))
         Z = np.nan_to_num(Z)
@@ -326,6 +367,7 @@ def model_dematel(mat, weights, types):
 
 
 def model_fuzzy_ahp(weights):
+    """Fuzzy AHP — gera números triangulares a partir dos pesos crisp (spread ±20%) e defuzzifica."""
     fuzzy = np.array([(w * 0.8, w, w * 1.2) for w in weights])
     crisp = fuzzy.mean(axis=1)
     crisp = crisp / crisp.sum() if crisp.sum() > 0 else weights
@@ -333,10 +375,13 @@ def model_fuzzy_ahp(weights):
 
 
 def model_fuzzy_topsis(mat, weights, types, spread=0.10):
+    """Fuzzy TOPSIS — números triangulares (val·(1−s), val, val·(1+s)) com método do vértice."""
     l = mat * (1 - spread)
     m = mat.copy()
     u = mat * (1 + spread)
     n_alt, n_crit = mat.shape
+
+    # Normalização fuzzy
     L = np.zeros_like(l); M = np.zeros_like(m); U = np.zeros_like(u)
     for j in range(n_crit):
         if types[j] == "max":
@@ -350,10 +395,14 @@ def model_fuzzy_topsis(mat, weights, types, spread=0.10):
             M[:, j] = num / np.where(m[:, j] == 0, 1e-9, m[:, j])
             U[:, j] = num / np.where(l[:, j] == 0, 1e-9, l[:, j])
     Lw, Mw, Uw = L * weights, M * weights, U * weights
+
+    # Solução fuzzy ideal positiva (FPIS) e negativa (FNIS)
     fpis = np.array([(Uw[:, j].max(), Uw[:, j].max(), Uw[:, j].max()) for j in range(n_crit)])
     fnis = np.array([(Lw[:, j].min(), Lw[:, j].min(), Lw[:, j].min()) for j in range(n_crit)])
+
     def vd(al, am, au, bl, bm, bu):
         return np.sqrt(((al - bl) ** 2 + (am - bm) ** 2 + (au - bu) ** 2) / 3.0)
+
     d_plus = np.zeros(n_alt)
     d_minus = np.zeros(n_alt)
     for i in range(n_alt):
@@ -367,6 +416,7 @@ def model_fuzzy_topsis(mat, weights, types, spread=0.10):
 
 
 def model_fuzzy_anp(mat, weights, types):
+    """Fuzzy ANP — combina Fuzzy AHP (pesos com spread) com ajuste por supermatriz."""
     fahp = model_fuzzy_ahp(weights)
     fw = fahp["crisp_weights"]
     M = _influence_supermatrix(mat)
@@ -377,6 +427,40 @@ def model_fuzzy_anp(mat, weights, types):
     scores = (norm * adj).sum(axis=1)
     return {"crisp_fuzzy_weights": fw, "adjusted_weights": adj,
             "scores": scores, "ranking": ranking_from_scores(scores)}
+
+
+# =============================================================================
+# SIDEBAR — Upload e parâmetros
+# =============================================================================
+with st.sidebar:
+    st.header("⚙️ Configuração")
+
+    uploaded = st.file_uploader(
+        "Carregar Excel (.xlsx)",
+        type=["xlsx", "xls"],
+        help="Folha 'Dados' obrigatória. Folha 'Pesos' opcional."
+    )
+
+    with st.expander("📌 Formato esperado", expanded=False):
+        st.markdown(
+            "**Folha `Dados`** — 1ª coluna = identificador da alternativa, restantes colunas = critérios numéricos.\n\n"
+            "**Folha `Pesos`** — vector de pesos na mesma ordem dos critérios (linha ou coluna). "
+            "Se ausente, é aplicada ponderação uniforme."
+        )
+
+    use_demo = st.checkbox("Usar dados de demonstração MCG (9 alts × 6 crit)", value=False)
+
+    st.divider()
+    st.subheader("🎛️ Parâmetros de modelos")
+    c_thresh = st.slider("ELECTRE — limiar de concordância (c)", 0.50, 0.95, 0.65, 0.01)
+    d_thresh = st.slider("ELECTRE — limiar de discordância (d)", 0.05, 0.50, 0.35, 0.01)
+    promethee_fn = st.selectbox(
+        "PROMETHEE — função de preferência",
+        ["usual", "linear", "gaussian"],
+        index=1,
+    )
+    vikor_v = st.slider("VIKOR — peso da estratégia v", 0.0, 1.0, 0.5, 0.05)
+    sens_pct = st.slider("Sensibilidade ±% nos pesos (TOPSIS)", 5, 50, 20, 5)
 
 
 # =============================================================================
@@ -393,7 +477,6 @@ def build_demo_data():
         "C5_UD": [180, 60, 60, 90, 30, 60, 180, 60, 300],
         "C6_RC": [4, 5, 5, 3, 3, 5, 4, 4, 3],
     })
-    # PESOS AHP DO Q5.2 (Secção 5.2) — C1_VP domina com ~46%
     weights = np.array([0.4615, 0.1987, 0.0230, 0.0972, 0.0217, 0.1979])
     return df, weights
 
@@ -401,53 +484,41 @@ def build_demo_data():
 def load_excel(file):
     xls = pd.ExcelFile(file)
     if "Dados" not in xls.sheet_names:
-        raise ValueError("A folha 'Dados' não foi encontrada.")
+        raise ValueError("A folha 'Dados' não foi encontrada no ficheiro.")
     df = pd.read_excel(xls, sheet_name="Dados")
+    # 1ª coluna = identificador
     id_col = df.columns[0]
     df = df.dropna(subset=[id_col]).reset_index(drop=True)
+    # critérios numéricos
     numeric = df.select_dtypes(include=[np.number]).columns.tolist()
     crits = [c for c in numeric if c != id_col]
+    if not crits:
+        raise ValueError("Nenhuma coluna numérica de critério foi detectada.")
     df[id_col] = df[id_col].astype(str)
+    # Pesos
     if "Pesos" in xls.sheet_names:
         wdf = pd.read_excel(xls, sheet_name="Pesos", header=None)
         wvals = wdf.select_dtypes(include=[np.number]).values.flatten()
         wvals = wvals[~np.isnan(wvals)]
-        weights = np.array(wvals[:len(crits)], dtype=float) if len(wvals) >= len(crits) else np.ones(len(crits))
+        if len(wvals) >= len(crits):
+            weights = np.array(wvals[:len(crits)], dtype=float)
+        else:
+            weights = np.ones(len(crits))
     else:
         weights = np.ones(len(crits))
     weights = weights / weights.sum()
     return df, weights, id_col, crits
 
 
-# =============================================================================
-# SIDEBAR
-# =============================================================================
-with st.sidebar:
-    st.header("⚙️ Configuração")
-    uploaded = st.file_uploader("Carregar Excel (.xlsx)", type=["xlsx", "xls"])
-    use_demo = st.checkbox("Usar dados de demonstração MCG (9 alts × 6 crit)", value=False)
-
-    st.divider()
-    st.subheader("🎛️ Parâmetros de modelos")
-    c_thresh = st.slider("ELECTRE — limiar de concordância (c)", 0.50, 0.95, 0.65, 0.01)
-    d_thresh = st.slider("ELECTRE — limiar de discordância (d)", 0.05, 0.50, 0.35, 0.01)
-    promethee_fn = st.selectbox("PROMETHEE — função de preferência", ["usual", "linear", "gaussian"], index=1)
-    vikor_v = st.slider("VIKOR — peso da estratégia v", 0.0, 1.0, 0.5, 0.05)
-    sens_pct = st.slider("Sensibilidade ±% nos pesos (TOPSIS)", 5, 50, 20, 5)
-
-# =============================================================================
-# ESTADO
-# =============================================================================
+# Estado
 if "loaded" not in st.session_state:
     st.session_state.loaded = False
-if "all_results" not in st.session_state:
-    st.session_state.all_results = {}
 
 data_df = None
 weights = None
 id_col = None
 criteria = []
-types = []
+err_load = None
 
 if use_demo:
     data_df, weights = build_demo_data()
@@ -462,16 +533,28 @@ elif uploaded is not None:
     else:
         st.sidebar.error(f"❌ {err_load}")
 
-# =============================================================================
-# EDITOR DE CRITÉRIOS (com pesos AHP e C5_UD = min forçado)
-# =============================================================================
+# Editor de tipos e pesos — UI única, compacta e escalável para qualquer nº de critérios
+types = []
 if st.session_state.loaded and data_df is not None:
     with st.sidebar:
         st.divider()
         st.subheader("🎯 Configuração de critérios")
+        st.caption(
+            f"**{len(criteria)} critérios** detectados. Edite o sentido (max/min) e o peso "
+            "directamente na tabela. Os pesos são normalizados automaticamente."
+        )
 
-        # Mapeamento rígido para garantir C5_UD = min e pesos AHP
-        type_defaults = ["min" if c == "C5_UD" else "max" for c in criteria]
+        # Heurística de defaults: critérios com nome a sugerir custo → 'min'
+        type_defaults = [
+            "min" if any(k in c.lower() for k in [
+                "ee", "custo", "cost", "esforço", "esforco",
+                "prazo", "tempo", "delay", "risk", "risco",
+            ]) else "max"
+            for c in criteria
+        ]
+
+        # Chave dependente dos critérios — força reset quando se troca de ficheiro
+        editor_key = f"crit_cfg_{hash(tuple(criteria))}"
 
         config_df = pd.DataFrame({
             "Critério": criteria,
@@ -479,28 +562,32 @@ if st.session_state.loaded and data_df is not None:
             "Peso": [float(w) for w in weights],
         })
 
-        editor_key = "crit_cfg_demo" if use_demo else f"crit_cfg_{hash(tuple(criteria))}"
-
-        # Forçar reset do editor quando muda para demo
-        if use_demo and editor_key in st.session_state:
-            del st.session_state[editor_key]
+        # Calcula altura adaptativa: limite máximo para não ocupar a sidebar toda
+        n = len(criteria)
+        row_h = 35
+        editor_height = min(35 + row_h * n, 500)  # cap a ~13 linhas visíveis, restantes via scroll
 
         edited_cfg = st.data_editor(
             config_df,
             column_config={
-                "Critério": st.column_config.TextColumn("Critério", disabled=True),
-                "Sentido": st.column_config.SelectboxColumn("Sentido", options=["max", "min"], required=True),
-                "Peso": st.column_config.NumberColumn("Peso", min_value=0.0, format="%.4f"),
+                "Critério": st.column_config.TextColumn("Critério", disabled=True, width="medium"),
+                "Sentido": st.column_config.SelectboxColumn(
+                    "Sentido", options=["max", "min"], required=True, width="small",
+                    help="max = benefício (quanto maior melhor); min = custo (quanto menor melhor)",
+                ),
+                "Peso": st.column_config.NumberColumn(
+                    "Peso", min_value=0.0, max_value=1.0, step=0.001, format="%.4f", width="small",
+                    help="Pesos relativos — serão normalizados para somar 1.0",
+                ),
             },
             use_container_width=True,
             hide_index=True,
+            num_rows="fixed",
+            height=editor_height,
             key=editor_key,
         )
 
-        if use_demo and st.button("🔄 Restaurar Pesos AHP do Q5.2 (Secção 5.2)"):
-            st.session_state[editor_key] = config_df.copy()
-            st.rerun()
-
+        # Extrair valores actualizados
         try:
             types = edited_cfg["Sentido"].astype(str).tolist()
             edited_w = edited_cfg["Peso"].astype(float).values
@@ -509,15 +596,23 @@ if st.session_state.loaded and data_df is not None:
             else:
                 weights = np.ones(len(criteria)) / len(criteria)
                 st.warning("⚠️ Soma de pesos = 0. A usar pesos uniformes.")
-        except Exception:
+        except Exception as exc:
+            st.error(f"Erro na configuração: {exc}")
             types = type_defaults
             weights = np.ones(len(criteria)) / len(criteria)
 
+        # Resumo + acções rápidas
+        st.caption(
+            f"📊 max: **{types.count('max')}** · min: **{types.count('min')}** · "
+            f"Σ pesos (antes da norm.): **{float(edited_cfg['Peso'].sum()):.4f}**"
+        )
+
+
 # =============================================================================
-# HELPERS
+# HELPERS DE RENDERIZAÇÃO
 # =============================================================================
 def need_data():
-    st.info("👈 Carregue um ficheiro Excel ou active o modo demonstração na sidebar.")
+    st.info("👈 Carregue um ficheiro Excel na sidebar (ou active o modo demo) para começar.")
 
 
 def get_matrix():
@@ -535,20 +630,20 @@ def render_ranking_chart(alts, scores, title, label="Score"):
 
 
 # =============================================================================
-# TABS
+# DEFINIR TABS
 # =============================================================================
 TAB_LABELS = [
-    "📋 Visão Geral", "📖 Teoria MCDM", "🔺 AHP", "🕸️ ANP", "🎯 TOPSIS", "🔗 ELECTRE",
+    "📋 Visão Geral", "🔺 AHP", "🕸️ ANP", "🎯 TOPSIS", "🔗 ELECTRE",
     "📊 PROMETHEE", "⚖️ VIKOR", "📐 MAUT", "🧮 COPRAS", "🌐 DEMATEL",
-    "🌫️ Fuzzy AHP", "🌫️ Fuzzy TOPSIS", "🌫️ Fuzzy ANP",
-    "🏆 Dashboard", "📝 Relatório"
+    "🌫️ Fuzzy AHP", "🌫️ Fuzzy TOPSIS", "🌫️ Fuzzy ANP", "🏆 Dashboard",
 ]
 tabs = st.tabs(TAB_LABELS)
 
-all_results = st.session_state.all_results
+# Estrutura para o dashboard final
+all_results = {}
 
 # =============================================================================
-# TAB 0 — VISÃO GERAL
+# TAB 1 — VISÃO GERAL
 # =============================================================================
 with tabs[0]:
     st.header("📋 Visão Geral dos Dados")
@@ -560,8 +655,10 @@ with tabs[0]:
         col1.metric("Alternativas", len(alts))
         col2.metric("Critérios", len(criteria))
         col3.metric("Tipos (max/min)", f"{types.count('max')}/{types.count('min')}")
+
         st.subheader("Matriz de decisão")
         st.dataframe(data_df, use_container_width=True, hide_index=True)
+
         c1, c2 = st.columns([1, 1])
         with c1:
             st.subheader("Pesos e Sentido")
@@ -573,69 +670,27 @@ with tabs[0]:
         with c2:
             st.subheader("Estatísticas descritivas")
             st.dataframe(data_df[criteria].describe().T, use_container_width=True)
+
         st.subheader("Heatmap normalizado (min-max)")
         try:
             mat = get_matrix()
             norm = normalize_minmax(mat, types)
-            fig = px.imshow(norm, labels=dict(x="Critério", y="Alternativa", color="Valor normalizado"),
-                            x=criteria, y=alts, color_continuous_scale="RdYlGn", aspect="auto", text_auto=".2f")
+            fig = px.imshow(
+                norm,
+                labels=dict(x="Critério", y="Alternativa", color="Valor normalizado"),
+                x=criteria, y=alts, color_continuous_scale="RdYlGn", aspect="auto",
+                text_auto=".2f",
+            )
             fig.update_layout(height=420, margin=dict(l=10, r=10, t=30, b=10))
             st.plotly_chart(fig, use_container_width=True)
         except Exception as exc:
             st.error(f"Erro no heatmap: {exc}")
 
-# =============================================================================
-# TAB 1 — TEORIA MCDM
-# =============================================================================
-with tabs[1]:
-    st.header("📖 Teoria e Matemática dos Métodos MCDM")
-    st.markdown("""
-    Esta secção explica **todos os métodos** implementados no dashboard, com a teoria completa, 
-    fórmulas matemáticas e passos algorítmicos.
-    """)
-    st.subheader("1. AHP — Analytic Hierarchy Process")
-    st.markdown(r"""
-    Matriz de comparações par-a-par \( A = (a_{ij}) \).
-
-    Pesos por autovetor principal:
-    \[
-    A \mathbf{w} = \lambda_{\max} \mathbf{w}
-    \]
-    Consistência:
-    \[
-    CI = \frac{\lambda_{\max} - n}{n-1}, \quad CR = \frac{CI}{RI}
-    \]
-    """)
-    st.subheader("2. ANP")
-    st.markdown(r"""
-    Supermatriz \( M \), matriz limite \( L = \lim M^k \).
-    """)
-    st.subheader("3. TOPSIS")
-    st.markdown(r"""
-    \[
-    C_i^* = \frac{d_i^-}{d_i^+ + d_i^-}
-    \]
-    """)
-    st.subheader("4. ELECTRE I")
-    st.markdown(r"""
-    Sobreclassificação se \( C(a,b) \geq c \) e \( D(a,b) \leq d \).
-    """)
-    st.subheader("5. PROMETHEE II")
-    st.markdown(r"""
-    Fluxo líquido \( \phi(a) = \phi^+(a) - \phi^-(a) \).
-    """)
-    st.subheader("6. VIKOR")
-    st.markdown(r"""
-    \[
-    Q_i = v \frac{S_i - S^*}{S^- - S^*} + (1-v) \frac{R_i - R^*}{R^- - R^*}
-    \]
-    """)
-    st.info("Todas as implementações seguem rigorosamente as fórmulas acima.")
 
 # =============================================================================
 # TAB 2 — AHP
 # =============================================================================
-with tabs[2]:
+with tabs[1]:
     st.header("🔺 AHP — Analytic Hierarchy Process")
     if not st.session_state.loaded:
         need_data()
@@ -647,6 +702,7 @@ with tabs[2]:
             "é actualizado automaticamente como recíproco. Os pesos são recalculados via método do autovector."
         )
 
+        # Matriz inicial a partir dos pesos correntes
         init = np.ones((n, n))
         for i in range(n):
             for j in range(n):
@@ -656,6 +712,7 @@ with tabs[2]:
         pw_df = pd.DataFrame(init, index=criteria, columns=criteria).round(4)
         edited_pw = st.data_editor(pw_df, use_container_width=True, key="ahp_pw")
 
+        # Forçar reciprocidade
         E = edited_pw.values.astype(float).copy()
         for i in range(n):
             for j in range(n):
@@ -684,6 +741,8 @@ with tabs[2]:
             st.dataframe(comp_df.style.format({"Peso AHP": "{:.4f}", "Peso na sidebar": "{:.4f}"}),
                          use_container_width=True, hide_index=True)
 
+            # Ranking AHP (utilidade aditiva com pesos AHP)
+            st.subheader("Ranking AHP (aplicado às alternativas)")
             norm = normalize_minmax(mat, types)
             ahp_scores = (norm * res["weights"]).sum(axis=1)
             ahp_rank = ranking_from_scores(ahp_scores)
@@ -700,6 +759,7 @@ with tabs[2]:
                             use_container_width=True)
 
             all_results["AHP"] = {"scores": ahp_scores, "ranking": ahp_rank, "weights": res["weights"]}
+
 
 # =============================================================================
 # TAB 3 — ANP
@@ -1226,38 +1286,117 @@ with tabs[12]:
             all_results["Fuzzy ANP"] = {"scores": res["scores"], "ranking": res["ranking"]}
 
 
-# TAB 14 — DASHBOARD CONSOLIDADO (completo)
-with tabs[14]:
+# =============================================================================
+# TAB 14 — DASHBOARD CONSOLIDADO
+# =============================================================================
+with tabs[13]:
     st.header("🏆 Dashboard Consolidado")
     if not st.session_state.loaded:
         need_data()
     elif not all_results:
-        st.warning("⚠️ Nenhum modelo foi executado com sucesso.")
+        st.warning("⚠️ Nenhum modelo foi executado com sucesso. Volte às tabs anteriores e verifique os erros.")
     else:
         alts = data_df[id_col].tolist()
+        n_alt = len(alts)
+
+        # Tabela consolidada de rankings
         models_with_results = list(all_results.keys())
         rank_table = pd.DataFrame({"Alternativa": alts})
         score_table = pd.DataFrame({"Alternativa": alts})
         for m in models_with_results:
             rank_table[m] = all_results[m]["ranking"]
             score_table[m] = all_results[m]["scores"]
+
+        # Ranking agregado (média de posições — método de Borda invertido)
         rank_table["Posição Média"] = rank_table[models_with_results].mean(axis=1).round(2)
         rank_table["Ranking Final"] = ranking_from_scores(-rank_table["Posição Média"].values)
         rank_table = rank_table.sort_values("Ranking Final").reset_index(drop=True)
+
         st.subheader("Tabela consolidada de rankings (1 = melhor)")
         styled = rank_table.style.format({"Posição Média": "{:.2f}"})\
             .background_gradient(subset=models_with_results, cmap="RdYlGn_r")\
             .background_gradient(subset=["Posição Média", "Ranking Final"], cmap="RdYlGn_r")
         st.dataframe(styled, use_container_width=True, hide_index=True)
 
-# TAB 15 — RELATÓRIO FINAL
-with tabs[15]:
-    st.header("📝 Relatório Final — Caso de Estudo MCG")
-    if not st.session_state.loaded:
-        need_data()
-    else:
-        st.markdown("### Pesos AHP do Q5.2")
-        st.dataframe(pd.DataFrame({"Critério": criteria, "Peso": [f"{w:.4f}" for w in weights]}), use_container_width=True, hide_index=True)
-        st.info("C5_UD = min | Pesos AHP Q5.2 aplicados | CR da matriz original ≈ 0.1534 (inconsistente — discutir no relatório)")
+        # Convergência: nº de modelos que colocam cada alternativa no Top-3
+        top3_count = (rank_table[models_with_results] <= 3).sum(axis=1)
+        rank_table["Top-3 em N modelos"] = top3_count
 
-st.success("✅ Dashboard completo e funcional — pesos AHP Q5.2 + C5_UD = min + todos os gráficos restaurados!")
+        st.subheader("📌 Painel de recomendação")
+        top3 = rank_table.sort_values("Ranking Final").head(3)
+        top3_alts = top3["Alternativa"].tolist()
+        convergence = (rank_table[rank_table["Alternativa"].isin(top3_alts)]
+                       [models_with_results] <= 3).sum().sum()
+        max_conv = 3 * len(models_with_results)
+        conv_pct = (convergence / max_conv) * 100 if max_conv else 0
+
+        rec_col1, rec_col2, rec_col3 = st.columns(3)
+        rec_col1.metric("🥇 1º lugar", top3_alts[0] if len(top3_alts) > 0 else "—")
+        rec_col2.metric("🥈 2º lugar", top3_alts[1] if len(top3_alts) > 1 else "—")
+        rec_col3.metric("🥉 3º lugar", top3_alts[2] if len(top3_alts) > 2 else "—")
+
+        st.info(
+            f"**Convergência:** {convergence}/{max_conv} ({conv_pct:.0f}%) — "
+            f"i.e., dos 3 × {len(models_with_results)} = {max_conv} possíveis posições Top-3, "
+            f"{convergence} foram atribuídas às alternativas {', '.join(top3_alts)}.\n\n"
+            f"**Top-3 recomendado:** {', '.join(top3_alts)} | "
+            f"**Modelos avaliados:** {', '.join(models_with_results)}"
+        )
+
+        # Gráfico de calor de rankings
+        st.subheader("Heatmap de posições por modelo")
+        try:
+            heat_df = rank_table.set_index("Alternativa")[models_with_results]
+            fig = px.imshow(heat_df.values,
+                            labels=dict(x="Modelo", y="Alternativa", color="Ranking"),
+                            x=models_with_results, y=heat_df.index,
+                            color_continuous_scale="RdYlGn_r",
+                            aspect="auto", text_auto=True)
+            fig.update_layout(height=420, margin=dict(l=10, r=10, t=30, b=10))
+            st.plotly_chart(fig, use_container_width=True)
+        except Exception as exc:
+            st.error(f"Erro no heatmap: {exc}")
+
+        # Gráfico radar para Top-3
+        st.subheader("Perfil multicritério — Top-3 (radar normalizado)")
+        try:
+            mat = get_matrix()
+            norm = normalize_minmax(mat, types)
+            fig = go.Figure()
+            colors = ["#e63946", "#f4a261", "#2a9d8f"]
+            for k, alt_name in enumerate(top3_alts):
+                idx = alts.index(alt_name)
+                vals = list(norm[idx]) + [norm[idx, 0]]
+                axes = criteria + [criteria[0]]
+                fig.add_trace(go.Scatterpolar(
+                    r=vals, theta=axes, fill="toself", name=alt_name,
+                    line=dict(color=colors[k % len(colors)], width=2),
+                    opacity=0.65,
+                ))
+            fig.update_layout(
+                polar=dict(radialaxis=dict(visible=True, range=[0, 1])),
+                showlegend=True, height=460, margin=dict(l=10, r=10, t=30, b=10),
+                title="Top-3 — perfil normalizado por critério",
+            )
+            st.plotly_chart(fig, use_container_width=True)
+        except Exception as exc:
+            st.error(f"Erro no radar: {exc}")
+
+        # Exportação Excel
+        st.subheader("📥 Exportação")
+        try:
+            buffer = io.BytesIO()
+            with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+                data_df.to_excel(writer, sheet_name="Dados", index=False)
+                pd.DataFrame({"Critério": criteria, "Peso": weights, "Sentido": types})\
+                    .to_excel(writer, sheet_name="Pesos_e_Tipos", index=False)
+                rank_table.to_excel(writer, sheet_name="Rankings", index=False)
+                score_table.to_excel(writer, sheet_name="Scores", index=False)
+            st.download_button(
+                "Descarregar Excel com todos os resultados",
+                data=buffer.getvalue(),
+                file_name="mcdm_resultados.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        except Exception as exc:
+            st.error(f"Erro na exportação: {exc}")
