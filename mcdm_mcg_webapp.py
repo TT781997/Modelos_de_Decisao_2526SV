@@ -3,11 +3,11 @@
 MCDM Dashboard — Sistema de Apoio à Decisão Multicritério
 Modelos de Decisão | MEGI ISEL 2025/2026
 
-Atualizações:
-- Entrada 100% Manual via interface (Tabelas Dinâmicas para Critérios e Matriz).
-- Painel de Requisitos e Parâmetros otimizado.
-- O AHP injeta os seus pesos globalmente.
-- Correção do Método de Borda no Dashboard.
+Atualizações Definitivas:
+- Restauro COMPLETO do Passo-a-Passo Matemático em todas as Tabs.
+- Restauro da Análise de Sensibilidade Paralela.
+- Proteção total de estado (Tabelas Dinâmicas que não apagam dados).
+- Motor Global de Pesos (AHP, SWING, SMART, Entropia, CRITIC).
 """
 
 import io
@@ -15,8 +15,6 @@ import warnings
 import numpy as np
 import pandas as pd
 import streamlit as st
-import plotly.express as px
-import plotly.graph_objects as go
 
 warnings.filterwarnings("ignore")
 
@@ -33,13 +31,31 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 st.title("📊 MCDM Dashboard — Priorização Multicritério")
-st.caption("Modelos de Decisão | Definição Manual de Requisitos e Matrizes")
+st.caption("Modelos de Decisão | Matemática Passo-a-Passo e Sensibilidade")
 
-# =============================================================================
-# FUNÇÕES MATEMÁTICAS GERAIS E MCDM
-# =============================================================================
 RI_TABLE = {1: 0.0, 2: 0.0, 3: 0.58, 4: 0.90, 5: 1.12, 6: 1.24, 7: 1.32, 8: 1.41, 9: 1.45, 10: 1.49}
 
+# =============================================================================
+# INICIALIZAÇÃO DO ESTADO DE SESSÃO
+# =============================================================================
+if "manual_criteria" not in st.session_state:
+    st.session_state.manual_criteria = pd.DataFrame({
+        "Critério": ["C1", "C2", "C3"],
+        "Sentido": ["max", "max", "min"],
+        "Peso Inicial": [0.4, 0.4, 0.2]
+    })
+
+if "manual_matrix" not in st.session_state:
+    st.session_state.manual_matrix = pd.DataFrame({
+        "Alternativa": ["Alt 1", "Alt 2"],
+        "C1": [10.0, 20.0],
+        "C2": [15.0, 12.0],
+        "C3": [5.0, 8.0]
+    })
+
+# =============================================================================
+# FUNÇÕES MATEMÁTICAS GERAIS E SENSIBILIDADE
+# =============================================================================
 def safe_call(fn, *args, **kwargs):
     try: return fn(*args, **kwargs), None
     except Exception as exc: return None, f"{type(exc).__name__}: {exc}"
@@ -67,12 +83,10 @@ def normalize_sum(mat, types):
     for j in range(mat.shape[1]):
         col = mat[:, j]
         if types[j] == "max":
-            s = col.sum()
-            out[:, j] = col / s if s != 0 else 1.0 / len(col)
+            s = col.sum(); out[:, j] = col / s if s != 0 else 1.0 / len(col)
         else:
             inv = 1.0 / np.where(col == 0, 1e-9, col)
-            s = inv.sum()
-            out[:, j] = inv / s if s != 0 else 1.0 / len(col)
+            s = inv.sum(); out[:, j] = inv / s if s != 0 else 1.0 / len(col)
     return out
 
 def ranking_from_scores(scores, higher_is_better=True):
@@ -82,12 +96,59 @@ def ranking_from_scores(scores, higher_is_better=True):
     rank[order] = np.arange(1, len(scores) + 1)
     return rank
 
-# Modelos
-def model_saw(mat, weights, types):
-    norm = normalize_minmax(mat, types)
-    scores = (norm * weights).sum(axis=1)
-    return {"scores": scores, "ranking": ranking_from_scores(scores)}
+def calc_perturbed_weights(weights, target_idx, factor):
+    w = np.array(weights, copy=True)
+    w[target_idx] *= factor
+    if w[target_idx] >= 1.0:
+        w_new = np.zeros_like(w)
+        w_new[target_idx] = 1.0
+        return w_new
+    rem_old = 1.0 - weights[target_idx]
+    rem_new = 1.0 - w[target_idx]
+    for k in range(len(w)):
+        if k != target_idx:
+            w[k] = weights[k] * (rem_new / rem_old) if rem_old > 0 else rem_new / (len(w)-1)
+    return w
 
+def render_sensitivity(model_func, mat, weights, types, alts, criteria, sens_pct, base_ranking, **kwargs):
+    st.markdown("---")
+    st.subheader(f"🔄 Análise de Sensibilidade (±{sens_pct}%)")
+    st.markdown("Mostra como o ranking final se altera se aumentarmos/reduzirmos isoladamente o peso de cada critério. **Verde** = subiu no ranking; **Vermelho** = desceu.")
+    
+    df_plus = pd.DataFrame({"Alternativa": alts, "Base": base_ranking})
+    df_minus = pd.DataFrame({"Alternativa": alts, "Base": base_ranking})
+
+    for j, crit in enumerate(criteria):
+        w_plus = calc_perturbed_weights(weights, j, 1 + sens_pct / 100.0)
+        res_plus, err = safe_call(model_func, mat, w_plus, types, **kwargs)
+        if not err and res_plus and "ranking" in res_plus: df_plus[f"+ {crit}"] = res_plus["ranking"]
+
+        w_minus = calc_perturbed_weights(weights, j, 1 - sens_pct / 100.0)
+        res_minus, err = safe_call(model_func, mat, w_minus, types, **kwargs)
+        if not err and res_minus and "ranking" in res_minus: df_minus[f"- {crit}"] = res_minus["ranking"]
+
+    def style_row(row):
+        base = row['Base']
+        styles = []
+        for col, val in row.items():
+            if col in ['Alternativa', 'Base']: styles.append('')
+            elif val < base: styles.append('color: #00B140; font-weight: bold;') 
+            elif val > base: styles.append('color: #D32F2F; font-weight: bold;') 
+            else: styles.append('color: gray;')
+        return styles
+
+    c1, c2 = st.columns(2)
+    with c1: 
+        st.write(f"**+{sens_pct}% no Peso**")
+        st.dataframe(df_plus.style.apply(style_row, axis=1), hide_index=True, use_container_width=True)
+    with c2: 
+        st.write(f"**-{sens_pct}% no Peso**")
+        st.dataframe(df_minus.style.apply(style_row, axis=1), hide_index=True, use_container_width=True)
+
+
+# =============================================================================
+# ALGORITMOS DE DECISÃO MULTICRITÉRIO (COM RETURNS DETALHADOS)
+# =============================================================================
 def model_topsis(mat, weights, types):
     norm = normalize_vector(mat)
     weighted = norm * weights
@@ -95,35 +156,9 @@ def model_topsis(mat, weights, types):
     anti = np.array([weighted[:, j].min() if types[j] == "max" else weighted[:, j].max() for j in range(mat.shape[1])])
     d_plus = np.sqrt(np.sum((weighted - ideal) ** 2, axis=1))
     d_minus = np.sqrt(np.sum((weighted - anti) ** 2, axis=1))
-    denom = np.where((d_plus + d_minus) == 0, 1e-9, d_plus + d_minus)
-    ci = d_minus / denom
-    return {"scores": ci, "ranking": ranking_from_scores(ci), "ideal": ideal, "anti_ideal": anti}
-
-def preference(d, ftype="usual", p=None, q=None, sigma=None):
-    if d <= 0: return 0.0
-    if ftype == "usual": return 1.0
-    if ftype == "linear": return float(min(d / p, 1.0)) if p else 0.0
-    if ftype == "gaussian": return float(1.0 - np.exp(-(d ** 2) / (2 * (sigma or 1.0) ** 2)))
-    return 0.0
-
-def model_promethee(mat, weights, types, function="linear"):
-    n_alt, n_crit = mat.shape
-    pref = np.zeros((n_alt, n_alt))
-    for j in range(n_crit):
-        col = mat[:, j]
-        rng = col.max() - col.min()
-        p = rng * 0.5 if rng > 0 else 1.0
-        sigma = rng * 0.3 if rng > 0 else 1.0
-        for i in range(n_alt):
-            for k in range(n_alt):
-                if i == k: continue
-                d = (col[i] - col[k]) if types[j] == "max" else (col[k] - col[i])
-                pref[i, k] += weights[j] * preference(d, function, p=p, sigma=sigma)
-    div = max(n_alt - 1, 1)
-    phi_plus = pref.sum(axis=1) / div
-    phi_minus = pref.sum(axis=0) / div
-    phi_net = phi_plus - phi_minus
-    return {"phi_plus": phi_plus, "phi_minus": phi_minus, "scores": phi_net, "ranking": ranking_from_scores(phi_net)}
+    ci = d_minus / np.where((d_plus + d_minus) == 0, 1e-9, d_plus + d_minus)
+    return {"normalized": norm, "weighted": weighted, "ideal": ideal, "anti_ideal": anti, 
+            "d_plus": d_plus, "d_minus": d_minus, "scores": ci, "ranking": ranking_from_scores(ci)}
 
 def model_electre(mat, weights, types, c_thresh=0.6, d_thresh=0.4):
     n_alt, n_crit = mat.shape
@@ -143,7 +178,27 @@ def model_electre(mat, weights, types, c_thresh=0.6, d_thresh=0.4):
     outrank = (concordance >= c_thresh) & (discordance <= d_thresh)
     np.fill_diagonal(outrank, False)
     net_dominance = outrank.sum(axis=1) - outrank.sum(axis=0)
-    return {"scores": net_dominance.astype(float), "ranking": ranking_from_scores(net_dominance.astype(float))}
+    return {"concordance": concordance, "discordance": discordance, "outrank": outrank,
+            "scores": net_dominance.astype(float), "ranking": ranking_from_scores(net_dominance.astype(float))}
+
+def model_promethee(mat, weights, types, function="linear"):
+    n_alt, n_crit = mat.shape
+    pref = np.zeros((n_alt, n_alt))
+    for j in range(n_crit):
+        col = mat[:, j]
+        rng = col.max() - col.min()
+        p = rng * 0.5 if rng > 0 else 1.0
+        for i in range(n_alt):
+            for k in range(n_alt):
+                if i == k: continue
+                d = (col[i] - col[k]) if types[j] == "max" else (col[k] - col[i])
+                if d > 0: pref[i, k] += weights[j] * (min(d / p, 1.0) if function == "linear" else 1.0)
+    div = max(n_alt - 1, 1)
+    phi_plus = pref.sum(axis=1) / div
+    phi_minus = pref.sum(axis=0) / div
+    phi_net = phi_plus - phi_minus
+    return {"preference_matrix": pref, "phi_plus": phi_plus, "phi_minus": phi_minus, 
+            "scores": phi_net, "ranking": ranking_from_scores(phi_net)}
 
 def model_vikor(mat, weights, types, v=0.5):
     n_alt, n_crit = mat.shape
@@ -156,7 +211,7 @@ def model_vikor(mat, weights, types, v=0.5):
         S[i], R[i] = terms.sum(), terms.max()
     s_rng, r_rng = max(S.max() - S.min(), 1e-9), max(R.max() - R.min(), 1e-9)
     Q = v * (S - S.min()) / s_rng + (1 - v) * (R - R.min()) / r_rng
-    return {"scores": -Q, "ranking": ranking_from_scores(-Q)}
+    return {"S": S, "R": R, "Q": Q, "scores": -Q, "ranking": ranking_from_scores(-Q)}
 
 def model_copras(mat, weights, types):
     norm = normalize_sum(mat, types)
@@ -171,7 +226,7 @@ def model_copras(mat, weights, types):
         Q = S_plus + (S_minus.min() * sum_inv) / (S_minus_safe * sum_inv)
     else: Q = S_plus
     N = (Q / Q.max()) * 100 if Q.max() != 0 else Q
-    return {"scores": N, "ranking": ranking_from_scores(N)}
+    return {"S_plus": S_plus, "S_minus": S_minus, "Q": Q, "scores": N, "ranking": ranking_from_scores(N)}
 
 def model_dematel(mat, weights, types):
     try:
@@ -184,262 +239,362 @@ def model_dematel(mat, weights, types):
     D = T.sum(axis=1)
     R = T.sum(axis=0)
     prominence = D + R
+    relation = D - R
     adj = weights * prominence if prominence.sum() > 0 else weights
     adj = adj / adj.sum()
     norm = normalize_minmax(mat, types)
     scores = (norm * adj).sum(axis=1)
-    return {"scores": scores, "ranking": ranking_from_scores(scores)}
+    return {"T": T, "prominence": prominence, "relation": relation, "adj_weights": adj, "scores": scores, "ranking": ranking_from_scores(scores)}
 
 
 # =============================================================================
-# SIDEBAR: MODO DE ENTRADA E REQUISITOS (PARÂMETROS)
+# BARRA LATERAL: PARÂMETROS E REQUISITOS DOS MODELOS
 # =============================================================================
 with st.sidebar:
-    st.header("⚙️ Estrutura do Problema")
-    input_method = st.radio("Método de Entrada dos Dados:", ["Entrada Manual", "Carregar Excel", "Dados de Demonstração"])
+    st.header("⚙️ Configurações Globais")
+    input_method = st.radio("Origem dos Dados:", ["Entrada Manual Direta", "Dados de Demonstração MCG"])
     
     st.divider()
-    
-    # SE MODO MANUAL
-    if input_method == "Entrada Manual":
-        st.subheader("📐 Dimensões")
-        n_alts = st.number_input("Nº de Alternativas", min_value=2, max_value=50, value=4, step=1)
-        n_crits = st.number_input("Nº de Critérios", min_value=2, max_value=20, value=4, step=1)
-    elif input_method == "Carregar Excel":
-        uploaded = st.file_uploader("Carregar Excel (.xlsx)", type=["xlsx", "xls"])
-    
-    st.divider()
-    st.subheader("🎛️ Requisitos dos Modelos")
-    st.caption("Ajuste os parâmetros abaixo para calibrar os modelos multicritério.")
-    c_thresh = st.slider("ELECTRE: Limiar de Concordância (c)", 0.50, 0.95, 0.65, 0.01)
-    d_thresh = st.slider("ELECTRE: Limiar de Discordância (d)", 0.05, 0.50, 0.35, 0.01)
-    vikor_v = st.slider("VIKOR: Peso da estratégia (v)", 0.0, 1.0, 0.5, 0.05, help="1 = Máxima utilidade; 0 = Mínimo arrependimento")
-    promethee_fn = st.selectbox("PROMETHEE: Função de Preferência", ["usual", "linear", "gaussian"], index=1)
+    st.subheader("🎛️ Requisitos Técnicos")
+    c_thresh = st.slider("ELECTRE: Limiar Concordância (c)", 0.50, 0.95, 0.65, 0.01)
+    d_thresh = st.slider("ELECTRE: Limiar Discordância (d)", 0.05, 0.50, 0.35, 0.01)
+    vikor_v = st.slider("VIKOR: Estratégia Consenso (v)", 0.0, 1.0, 0.5, 0.05)
+    promethee_fn = st.selectbox("PROMETHEE: Critério", ["usual", "linear"], index=1)
+    sens_pct = st.slider("Variação Análise Sensibilidade (±%)", 5, 50, 20, 5)
 
 # =============================================================================
-# TAB 0 — PREENCHIMENTO E SETUP GERAL
+# CONFIGURAÇÃO DE ABAS
 # =============================================================================
-TAB_LABELS = ["📋 Setup e Dados Base", "⚖️ Motores de Pesos", "🎯 TOPSIS", "🔗 ELECTRE", "📊 PROMETHEE", "⚖️ VIKOR", "🧮 COPRAS", "🌐 DEMATEL", "🏆 Dashboard Consolidado"]
+TAB_LABELS = [
+    "📋 Dados", "⚖️ Motores de Pesos", "🎯 TOPSIS", "🔗 ELECTRE", 
+    "📊 PROMETHEE", "⚖️ VIKOR", "🧮 COPRAS", "🌐 DEMATEL", "🏆 Dashboard"
+]
 tabs = st.tabs(TAB_LABELS)
 
-# Variáveis globais de dados
-alts, criteria, weights, types, mat = [], [], [], [], None
-is_ready = False
-
+# =============================================================================
+# TAB 0 — SETUP DA GRELHA
+# =============================================================================
 with tabs[0]:
-    if input_method == "Entrada Manual":
-        st.header("🛠️ Configuração Manual do Problema")
-        
-        # 1. SETUP DE CRITÉRIOS
-        st.subheader("1. Setup de Critérios")
-        st.markdown("Defina o nome dos critérios, se são de **Benefício (max)** ou **Custo (min)** e o seu peso inicial.")
-        
-        # Criar dataframe por defeito para os critérios
-        default_crits = pd.DataFrame({
-            "Critério": [f"C{i+1}" for i in range(n_crits)],
-            "Sentido": ["max"] * n_crits,
-            "Peso": [1.0/n_crits] * n_crits
-        })
-        
-        edited_crits = st.data_editor(
-            default_crits, 
-            column_config={
-                "Critério": st.column_config.TextColumn("Nome do Critério", required=True),
-                "Sentido": st.column_config.SelectboxColumn("Max / Min", options=["max", "min"], required=True),
-                "Peso": st.column_config.NumberColumn("Peso (0 a 1)", min_value=0.0, step=0.05)
-            },
-            hide_index=True, use_container_width=True, key="crit_editor"
-        )
-        
-        criteria = edited_crits["Critério"].tolist()
-        types = edited_crits["Sentido"].tolist()
-        weights_raw = np.array(edited_crits["Peso"].tolist())
-        weights = weights_raw / weights_raw.sum() if weights_raw.sum() > 0 else np.ones(n_crits)/n_crits
-        
-        st.divider()
-        
-        # 2. PREENCHIMENTO DA MATRIZ
-        st.subheader("2. Matriz de Decisão")
-        st.markdown("Preencha as avaliações de cada alternativa para cada critério. As colunas são geradas automaticamente pelo passo anterior.")
-        
-        # Criar dataframe por defeito para a matriz
-        default_matrix = pd.DataFrame(0.0, index=range(n_alts), columns=criteria)
-        default_matrix.insert(0, "Alternativa", [f"Alt {i+1}" for i in range(n_alts)])
-        
-        edited_matrix = st.data_editor(
-            default_matrix,
-            column_config={"Alternativa": st.column_config.TextColumn("Alternativa", required=True)},
-            hide_index=True, use_container_width=True, key="mat_editor"
-        )
-        
-        alts = edited_matrix["Alternativa"].tolist()
-        mat = edited_matrix[criteria].astype(float).values
-        is_ready = True
-
-    elif input_method == "Dados de Demonstração":
-        st.header("📋 Dados de Demonstração (Caso MCG)")
-        df = pd.DataFrame({
-            "Alternativa": [f"A{i}" for i in range(1, 10)],
-            "C1_VP": [250_000_000, 300_000, 900_000, 650_000, 5_000_000, 1_350_000, 10_500_000, 3_450_000, 15_000_000],
-            "C2_PF": [0.25, 0.35, 0.50, 0.50, 0.40, 0.50, 0.40, 0.40, 0.60],
-            "C3_EE": [24, 8, 8, 8, 24, 8, 16, 8, 24],
-            "C4_FE": [4, 5, 3, 3, 4, 3, 3, 3, 4],
-            "C5_UD": [180, 60, 60, 90, 30, 60, 180, 60, 300],
-            "C6_RC": [4, 5, 5, 3, 3, 5, 4, 4, 3],
-        })
-        alts = df["Alternativa"].tolist()
-        criteria = [c for c in df.columns if c != "Alternativa"]
+    if input_method == "Dados de Demonstração MCG":
+        alts = [f"A{i}" for i in range(1, 10)]
+        criteria = ["C1_VP", "C2_PF", "C3_EE", "C4_FE", "C5_UD", "C6_RC"]
         types = ["max", "max", "min", "max", "min", "max"]
-        weights = np.array([0.4615, 0.1987, 0.0230, 0.0972, 0.0217, 0.1979])
-        mat = df[criteria].astype(float).values
+        weights_setup = np.array([0.4615, 0.1987, 0.0230, 0.0972, 0.0217, 0.1979])
+        mat = np.array([
+            [250000000, 0.25, 24, 4, 180, 4], [300000, 0.35, 8, 5, 60, 5],
+            [900000, 0.50, 8, 3, 60, 5], [650000, 0.50, 8, 3, 90, 3],
+            [5000000, 0.40, 24, 4, 30, 3], [1350000, 0.50, 8, 3, 60, 5],
+            [10500000, 0.40, 16, 3, 180, 4], [3450000, 0.40, 8, 3, 60, 4],
+            [15000000, 0.60, 24, 4, 300, 3]
+        ], dtype=float)
+        st.header("📋 Dados de Demonstração Carregados")
+        df_display = pd.DataFrame(mat, index=alts, columns=criteria)
+        df_display.insert(0, "Alternativa", alts)
+        st.dataframe(df_display, hide_index=True, use_container_width=True)
+    else:
+        st.header("🛠️ Configuração da Grelha de Decisão")
+        c1, c2 = st.columns([1, 2])
         
-        st.write("**Critérios:**")
-        st.dataframe(pd.DataFrame({"Critério": criteria, "Sentido": types, "Peso": weights}), hide_index=True)
-        st.write("**Matriz:**")
-        st.dataframe(df, hide_index=True)
-        is_ready = True
+        with c1:
+            st.subheader("1. Definição de Critérios")
+            edited_crit_df = st.data_editor(
+                st.session_state.manual_criteria,
+                column_config={
+                    "Critério": st.column_config.TextColumn("ID Critério", required=True),
+                    "Sentido": st.column_config.SelectboxColumn("Tipo", options=["max", "min"], required=True),
+                    "Peso Inicial": st.column_config.NumberColumn("Peso Base", min_value=0.0, step=0.05)
+                },
+                num_rows="dynamic", hide_index=True, use_container_width=True
+            )
+            st.session_state.manual_criteria = edited_crit_df
+            
+        active_crits = edited_crit_df["Critério"].dropna().tolist()
+        if len(active_crits) < 2:
+            st.warning("⚠️ Adicione pelo menos 2 critérios.")
+            st.stop()
+            
+        current_mat_df = st.session_state.manual_matrix
+        cols_to_keep = ["Alternativa"] + [c for c in active_crits if c in current_mat_df.columns]
+        updated_mat_df = current_mat_df[cols_to_keep].copy()
+        for c in active_crits:
+            if c not in updated_mat_df.columns:
+                updated_mat_df[c] = 0.0
+                
+        mat_cols_cfg = {"Alternativa": st.column_config.TextColumn("Nome da Alternativa", required=True)}
+        for c in active_crits:
+            mat_cols_cfg[c] = st.column_config.NumberColumn(c, default=0.0)
+            
+        with c2:
+            st.subheader("2. Avaliação das Alternativas")
+            edited_matrix_df = st.data_editor(
+                updated_mat_df, column_config=mat_cols_cfg,
+                num_rows="dynamic", hide_index=True, use_container_width=True
+            )
+            st.session_state.manual_matrix = edited_matrix_df
 
-    elif input_method == "Carregar Excel":
-        st.header("📋 Dados do Excel")
-        if uploaded:
-            try:
-                raw_df = pd.read_excel(pd.ExcelFile(uploaded), sheet_name="Dados")
-                alts = raw_df.iloc[:, 0].astype(str).tolist()
-                criteria = raw_df.select_dtypes(include=[np.number]).columns.tolist()
-                mat = raw_df[criteria].astype(float).values
-                types = ["max"] * len(criteria)
-                weights = np.ones(len(criteria)) / len(criteria)
-                st.success("Ficheiro carregado! Como usou Excel, assumiram-se pesos iguais e maximização. Use a Entrada Manual para maior controlo.")
-                st.dataframe(raw_df, hide_index=True)
-                is_ready = True
-            except Exception as e:
-                st.error(f"Erro a ler Excel: {e}")
-        else:
-            st.info("👈 Por favor carregue um ficheiro na barra lateral.")
+        alts = edited_matrix_df["Alternativa"].dropna().tolist()
+        criteria = active_crits
+        types = edited_crit_df["Sentido"].tolist()
+        w_raw = np.array(edited_crit_df["Peso Inicial"].tolist(), dtype=float)
+        weights_setup = w_raw / w_raw.sum() if w_raw.sum() > 0 else np.ones(len(criteria))/len(criteria)
+        mat = edited_matrix_df[criteria].astype(float).values
 
+        if len(alts) < 2:
+            st.info("💡 Adicione pelo menos 2 alternativas.")
+            st.stop()
 
 # =============================================================================
-# BLOQUEIO DE SEGURANÇA SE DADOS NÃO ESTIVEREM PRONTOS
-# =============================================================================
-if not is_ready:
-    st.stop()
-
-
-# =============================================================================
-# TAB 1 — MOTORES DE PESOS (AHP INJECTA GLOBALMENTE)
+# TAB 1 — MOTORES DE PESOS (ESCOLHA E INJEÇÃO GLOBAL)
 # =============================================================================
 with tabs[1]:
     st.header("⚖️ Motores de Geração de Pesos")
-    st.markdown("Selecione o método AHP para gerar novos pesos baseados em comparações par-a-par. **Se gerar pesos aqui, eles irão sobrescrever os pesos definidos no Setup para todos os modelos seguintes.**")
+    st.markdown("Selecione um método e visualize o passo-a-passo. Ative a *switch* para forçar os outros modelos a usar estes pesos.")
     
+    weight_method = st.radio("Metodologia de Extração de Pesos:", ["AHP", "SWING", "SMART", "Entropia de Shannon", "CRITIC"], horizontal=True)
     n_crit = len(criteria)
+    generated_weights = weights_setup.copy()
     
-    st.subheader("🔺 Analytic Hierarchy Process (AHP)")
-    st.markdown("**Passo 1: Matriz de Comparação Par-a-Par**. Edite a matriz abaixo (Escala de Saaty: 1 a 9).")
-    
-    if "ahp_matrix" not in st.session_state or st.session_state.ahp_matrix.shape != (n_crit, n_crit):
-        st.session_state.ahp_matrix = np.ones((n_crit, n_crit))
-        
-    pw_df = pd.DataFrame(st.session_state.ahp_matrix, index=criteria, columns=criteria).round(4)
-    edited_pw = st.data_editor(pw_df, use_container_width=True, key="ahp_manual")
-    
-    # Forçar reciprocidade
-    E = edited_pw.values.astype(float).copy()
-    for i in range(n_crit):
+    if weight_method == "AHP":
+        st.subheader("🔺 Passo-a-Passo: AHP")
+        if "ahp_matrix_data" not in st.session_state or st.session_state.ahp_matrix_data.shape != (n_crit, n_crit):
+            st.session_state.ahp_matrix_data = np.ones((n_crit, n_crit))
+        ahp_df = pd.DataFrame(st.session_state.ahp_matrix_data, index=criteria, columns=criteria)
+        edited_ahp = st.data_editor(ahp_df, use_container_width=True)
+        A = edited_ahp.values.astype(float).copy()
+        for i in range(n_crit):
+            for j in range(n_crit):
+                if i == j: A[i, j] = 1.0
+                elif i < j and A[i, j] != 0: A[j, i] = 1.0 / A[i, j]
+        st.session_state.ahp_matrix_data = A
+        col_sums = A.sum(axis=0)
+        norm_A = A / np.where(col_sums == 0, 1, col_sums)
+        generated_weights = norm_A.mean(axis=1)
+        lambdamax = (A.dot(generated_weights) / np.where(generated_weights == 0, 1, generated_weights)).mean()
+        ci = (lambdamax - n_crit) / (n_crit - 1) if n_crit > 1 else 0
+        ri = RI_TABLE.get(n_crit, 1.59)
+        cr = ci / ri if ri > 0 else 0
+        m1, m2, m3 = st.columns(3)
+        m1.metric("λ_max", f"{lambdamax:.4f}")
+        m2.metric("CI", f"{ci:.4f}")
+        m3.metric("CR", f"{cr:.4f}", delta="Válido (<0.10)" if cr <= 0.10 else "Inconsistente (>0.10)", delta_color="normal" if cr <= 0.10 else "inverse")
+
+    elif weight_method == "SWING":
+        st.subheader("🎯 Passo-a-Passo: SWING")
+        if "swing_pts" not in st.session_state or len(st.session_state.swing_pts) != n_crit:
+            st.session_state.swing_pts = [100.0] + [50.0]*(n_crit-1)
+        pts_df = pd.DataFrame({"Critério": criteria, "Pontos (0-100)": st.session_state.swing_pts})
+        edited_pts = st.data_editor(pts_df, hide_index=True, use_container_width=True)
+        p = edited_pts["Pontos (0-100)"].values.astype(float)
+        st.session_state.swing_pts = p
+        generated_weights = p / p.sum() if p.sum() > 0 else np.ones(n_crit)/n_crit
+
+    elif weight_method == "SMART":
+        st.subheader("📊 Passo-a-Passo: SMART")
+        if "smart_pts" not in st.session_state or len(st.session_state.smart_pts) != n_crit:
+            st.session_state.smart_pts = [50.0]*n_crit
+        pts_df = pd.DataFrame({"Critério": criteria, "Pontos (0-100)": st.session_state.smart_pts})
+        edited_pts = st.data_editor(pts_df, hide_index=True, use_container_width=True)
+        p = edited_pts["Pontos (0-100)"].values.astype(float)
+        st.session_state.smart_pts = p
+        generated_weights = p / p.sum() if p.sum() > 0 else np.ones(n_crit)/n_crit
+
+    elif weight_method == "Entropia de Shannon":
+        st.subheader("📐 Passo-a-Passo: Entropia")
+        norm_e = np.zeros_like(mat)
         for j in range(n_crit):
-            if i == j: E[i, j] = 1.0
-            elif i < j and E[i, j] != 0: E[j, i] = 1.0 / E[i, j]
-    st.session_state.ahp_matrix = E
+            if types[j] == "max":
+                s = mat[:, j].sum(); norm_e[:, j] = mat[:, j] / s if s > 0 else 1.0/len(alts)
+            else:
+                inv = 1.0 / np.where(mat[:, j] == 0, 1e-9, mat[:, j])
+                s = inv.sum(); norm_e[:, j] = inv / s if s > 0 else 1.0/len(alts)
+        k = 1.0 / np.log(len(alts)) if len(alts) > 1 else 1.0
+        norm_safe = np.where(norm_e == 0, 1e-9, norm_e)
+        ej = -k * np.sum(norm_safe * np.log(norm_safe), axis=0)
+        dj = 1.0 - ej
+        st.dataframe(pd.DataFrame({"Critério": criteria, "Entropia (E)": ej, "Divergência (d)": dj}).round(4), hide_index=True)
+        generated_weights = dj / dj.sum() if dj.sum() > 0 else np.ones(n_crit)/n_crit
+
+    elif weight_method == "CRITIC":
+        st.subheader("📈 Passo-a-Passo: CRITIC")
+        norm_c = normalize_minmax(mat, types)
+        std = np.std(norm_c, axis=0)
+        corr = np.corrcoef(norm_c.T)
+        corr = np.nan_to_num(corr, nan=0.0)
+        conflict = std * np.sum(1 - corr, axis=1)
+        st.dataframe(pd.DataFrame({"Critério": criteria, "Conflito (C)": conflict, "Desvio Padrão": std}).round(4), hide_index=True)
+        generated_weights = conflict / conflict.sum() if conflict.sum() > 0 else np.ones(n_crit)/n_crit
+
+    activate_weights = st.toggle(f"🔥 INJETAR PESOS '{weight_method.upper()}' EM TODOS OS MODELOS", value=False)
     
-    col_sums = E.sum(axis=0)
-    norm_E = E / col_sums
-    approx_weights = norm_E.mean(axis=1)
+    # OVERRIDE GLOBAL
+    final_weights = generated_weights if activate_weights else weights_setup
     
-    AW = E.dot(approx_weights)
-    lambda_max = (AW / approx_weights).mean()
-    CI = (lambda_max - n_crit) / (n_crit - 1) if n_crit > 1 else 0
-    RI = RI_TABLE.get(n_crit, 1.59)
-    CR = CI / RI if RI > 0 else 0
-    
-    m1, m2, m3 = st.columns(3)
-    m1.metric("λ_max", f"{lambda_max:.4f}")
-    m2.metric("CI", f"{CI:.4f}")
-    m3.metric("CR", f"{CR:.4f}", delta="Válido (<0.10)" if CR <= 0.10 else "Rever Valores", delta_color="normal" if CR <= 0.10 else "inverse")
-    
-    use_ahp = st.checkbox("🔥 **INJETAR ESTES PESOS AHP NO SISTEMA**", value=False)
-    if use_ahp:
-        weights = approx_weights  # OVERRIDE GLOBAL
-        st.success("Pesos AHP ativados globalmente para TOPSIS, ELECTRE, etc!")
-    
-    st.write("Pesos Calculados:")
-    st.dataframe(pd.DataFrame({"Critério": criteria, "Peso": approx_weights}).style.format({"Peso": "{:.4f}"}), hide_index=True)
+    if activate_weights:
+        st.success(f"✅ Pesos do método {weight_method} estão a alimentar as restantes Tabs!")
+    else:
+        st.info("⚠️ Atualmente os modelos estão a usar os 'Pesos Iniciais' da Tab de Dados.")
+        
+    st.dataframe(pd.DataFrame({"Critério": criteria, "Peso Final Usado": final_weights}).style.format({"Peso Final Usado": "{:.4f}"}), hide_index=True)
 
 
 # =============================================================================
-# EXECUTAR TODOS OS MODELOS E ARMAZENAR RESULTADOS
+# PREPARAÇÃO E EXECUÇÃO SEGURA DOS MODELOS
 # =============================================================================
 all_results = {}
 
-res_topsis, _ = safe_call(model_topsis, mat, weights, types)
-if res_topsis: all_results["TOPSIS"] = res_topsis
+res_topsis, err_top = safe_call(model_topsis, mat, final_weights, types)
+if not err_top: all_results["TOPSIS"] = res_topsis
 
-res_electre, _ = safe_call(model_electre, mat, weights, types, c_thresh, d_thresh)
-if res_electre: all_results["ELECTRE"] = res_electre
+res_electre, err_elec = safe_call(model_electre, mat, final_weights, types, c_thresh, d_thresh)
+if not err_elec: all_results["ELECTRE"] = res_electre
 
-res_promethee, _ = safe_call(model_promethee, mat, weights, types, promethee_fn)
-if res_promethee: all_results["PROMETHEE"] = res_promethee
+res_prom, err_prom = safe_call(model_promethee, mat, final_weights, types, promethee_fn)
+if not err_prom: all_results["PROMETHEE"] = res_prom
 
-res_vikor, _ = safe_call(model_vikor, mat, weights, types, vikor_v)
-if res_vikor: all_results["VIKOR"] = res_vikor
+res_vikor, err_vik = safe_call(model_vikor, mat, final_weights, types, vikor_v)
+if not err_vik: all_results["VIKOR"] = res_vikor
 
-res_copras, _ = safe_call(model_copras, mat, weights, types)
-if res_copras: all_results["COPRAS"] = res_copras
+res_cop, err_cop = safe_call(model_copras, mat, final_weights, types)
+if not err_cop: all_results["COPRAS"] = res_cop
 
-res_dematel, _ = safe_call(model_dematel, mat, weights, types)
-if res_dematel: all_results["DEMATEL"] = res_dematel
+res_dem, err_dem = safe_call(model_dematel, mat, final_weights, types)
+if not err_dem: all_results["DEMATEL"] = res_dem
 
-# =============================================================================
-# TABS DE APRESENTAÇÃO DE RESULTADOS
-# =============================================================================
-def show_results(model_name, res_dict, sort_col, format_str="{:.4f}"):
-    st.header(model_name)
-    rdf = pd.DataFrame({"Alternativa": alts, "Score": res_dict["scores"], "Ranking": res_dict["ranking"]}).sort_values("Ranking")
-    st.dataframe(rdf.style.format({"Score": format_str}), hide_index=True, use_container_width=True)
-
-with tabs[2]: show_results("🎯 TOPSIS", all_results.get("TOPSIS", {}), "Score")
-with tabs[3]: show_results("🔗 ELECTRE I", all_results.get("ELECTRE", {}), "Score")
-with tabs[4]: show_results("📊 PROMETHEE II", all_results.get("PROMETHEE", {}), "Score")
-with tabs[5]: show_results("⚖️ VIKOR", all_results.get("VIKOR", {}), "Score")
-with tabs[6]: show_results("🧮 COPRAS", all_results.get("COPRAS", {}), "Score")
-with tabs[7]: show_results("🌐 DEMATEL", all_results.get("DEMATEL", {}), "Score")
 
 # =============================================================================
-# TAB DASHBOARD CONSOLIDADO (Corrigido para Borda Invertido)
+# RENDERIZAÇÃO DETALHADA DAS TABS DE CADA MODELO (PASSO-A-PASSO E SENSIBILIDADE)
+# =============================================================================
+
+# TAB 2: TOPSIS
+with tabs[2]:
+    st.header("🎯 TOPSIS")
+    if "TOPSIS" in all_results:
+        r = all_results["TOPSIS"]
+        c1, c2 = st.columns(2)
+        with c1:
+            st.write("**Matriz Normalizada**")
+            st.dataframe(pd.DataFrame(r["normalized"], index=alts, columns=criteria).round(4))
+        with c2:
+            st.write("**Matriz Ponderada**")
+            st.dataframe(pd.DataFrame(r["weighted"], index=alts, columns=criteria).round(4))
+            
+        st.write("**Soluções Ideal e Anti-Ideal**")
+        st.dataframe(pd.DataFrame({"Critério": criteria, "A+ (Ideal)": r["ideal"], "A- (Anti-Ideal)": r["anti_ideal"]}).round(4), hide_index=True)
+        
+        st.subheader("Ranking Final")
+        rdf = pd.DataFrame({"Alternativa": alts, "D+": r["d_plus"], "D-": r["d_minus"], "Score (Ci)": r["scores"], "Ranking": r["ranking"]}).sort_values("Ranking")
+        st.dataframe(rdf.style.format({"D+": "{:.4f}", "D-": "{:.4f}", "Score (Ci)": "{:.4f}"}), hide_index=True, use_container_width=True)
+        
+        render_sensitivity(model_topsis, mat, final_weights, types, alts, criteria, sens_pct, r["ranking"])
+    else: st.error("Erro ao calcular TOPSIS. Verifique os dados.")
+
+# TAB 3: ELECTRE
+with tabs[3]:
+    st.header("🔗 ELECTRE I")
+    if "ELECTRE" in all_results:
+        r = all_results["ELECTRE"]
+        c1, c2 = st.columns(2)
+        with c1:
+            st.write("**Matriz de Concordância (C)**")
+            st.dataframe(pd.DataFrame(r["concordance"], index=alts, columns=alts).round(3))
+        with c2:
+            st.write("**Matriz de Discordância (D)**")
+            st.dataframe(pd.DataFrame(r["discordance"], index=alts, columns=alts).round(3))
+            
+        st.write("**Matriz de Sobreclassificação (Booleana)**")
+        st.dataframe(pd.DataFrame(r["outrank"], index=alts, columns=alts))
+        
+        st.subheader("Ranking Final")
+        rdf = pd.DataFrame({"Alternativa": alts, "Score Dominância": r["scores"], "Ranking": r["ranking"]}).sort_values("Ranking")
+        st.dataframe(rdf.style.format({"Score Dominância": "{:.2f}"}), hide_index=True, use_container_width=True)
+        
+        render_sensitivity(model_electre, mat, final_weights, types, alts, criteria, sens_pct, r["ranking"], c_thresh=c_thresh, d_thresh=d_thresh)
+    else: st.error("Erro ao calcular ELECTRE.")
+
+# TAB 4: PROMETHEE
+with tabs[4]:
+    st.header("📊 PROMETHEE II")
+    if "PROMETHEE" in all_results:
+        r = all_results["PROMETHEE"]
+        st.write("**Matriz de Preferência Agregada**")
+        st.dataframe(pd.DataFrame(r["preference_matrix"], index=alts, columns=alts).round(4))
+        
+        st.subheader("Ranking Final")
+        rdf = pd.DataFrame({"Alternativa": alts, "Fluxo Positivo (Φ+)": r["phi_plus"], "Fluxo Negativo (Φ-)": r["phi_minus"], "Fluxo Líquido (Φ)": r["scores"], "Ranking": r["ranking"]}).sort_values("Ranking")
+        st.dataframe(rdf.style.format({"Fluxo Positivo (Φ+)": "{:.4f}", "Fluxo Negativo (Φ-)": "{:.4f}", "Fluxo Líquido (Φ)": "{:.4f}"}), hide_index=True, use_container_width=True)
+        
+        render_sensitivity(model_promethee, mat, final_weights, types, alts, criteria, sens_pct, r["ranking"], function=promethee_fn)
+    else: st.error("Erro ao calcular PROMETHEE.")
+
+# TAB 5: VIKOR
+with tabs[5]:
+    st.header("⚖️ VIKOR")
+    if "VIKOR" in all_results:
+        r = all_results["VIKOR"]
+        st.subheader("Ranking Final (S, R e Índice Q)")
+        st.info("Nota: No método VIKOR o menor Q representa a melhor solução. A coluna Score converte isso internamente.")
+        rdf = pd.DataFrame({"Alternativa": alts, "Utilidade (S)": r["S"], "Arrependimento (R)": r["R"], "Índice (Q)": r["Q"], "Ranking": r["ranking"]}).sort_values("Ranking")
+        st.dataframe(rdf.style.format({"Utilidade (S)": "{:.4f}", "Arrependimento (R)": "{:.4f}", "Índice (Q)": "{:.4f}"}), hide_index=True, use_container_width=True)
+        
+        render_sensitivity(model_vikor, mat, final_weights, types, alts, criteria, sens_pct, r["ranking"], v=vikor_v)
+    else: st.error("Erro ao calcular VIKOR.")
+
+# TAB 6: COPRAS
+with tabs[6]:
+    st.header("🧮 COPRAS")
+    if "COPRAS" in all_results:
+        r = all_results["COPRAS"]
+        st.subheader("Ranking Final")
+        rdf = pd.DataFrame({"Alternativa": alts, "Benefícios (S+)": r["S_plus"], "Custos (S-)": r["S_minus"], "Peso Relativo (Q)": r["Q"], "Grau Utilidade % (N)": r["scores"], "Ranking": r["ranking"]}).sort_values("Ranking")
+        st.dataframe(rdf.style.format({"Benefícios (S+)": "{:.4f}", "Custos (S-)": "{:.4f}", "Peso Relativo (Q)": "{:.4f}", "Grau Utilidade % (N)": "{:.2f}"}), hide_index=True, use_container_width=True)
+        
+        render_sensitivity(model_copras, mat, final_weights, types, alts, criteria, sens_pct, r["ranking"])
+    else: st.error("Erro ao calcular COPRAS.")
+
+# TAB 7: DEMATEL
+with tabs[7]:
+    st.header("🌐 DEMATEL")
+    if "DEMATEL" in all_results:
+        r = all_results["DEMATEL"]
+        c1, c2 = st.columns([2, 1])
+        with c1:
+            st.write("**Matriz de Relação Total (T)**")
+            st.dataframe(pd.DataFrame(r["T"], index=criteria, columns=criteria).round(4))
+        with c2:
+            st.write("**Prominência e Relação**")
+            st.dataframe(pd.DataFrame({"Critério": criteria, "D+R": r["prominence"], "D-R": r["relation"]}).round(4), hide_index=True)
+            
+        st.subheader("Ranking Final (após ajuste de pesos pelo D+R)")
+        rdf = pd.DataFrame({"Alternativa": alts, "Score": r["scores"], "Ranking": r["ranking"]}).sort_values("Ranking")
+        st.dataframe(rdf.style.format({"Score": "{:.4f}"}), hide_index=True, use_container_width=True)
+        
+        render_sensitivity(model_dematel, mat, final_weights, types, alts, criteria, sens_pct, r["ranking"])
+    else: st.error("Erro ao calcular DEMATEL.")
+
+# =============================================================================
+# TAB 8 — DASHBOARD CONSOLIDADO (BORDA)
 # =============================================================================
 with tabs[8]:
-    st.header("🏆 Dashboard Consolidado")
-    if not all_results:
-        st.warning("Sem resultados.")
+    st.header("🏆 Matriz de Consenso e Dashboard Final")
+    models_executed = list(all_results.keys())
+    
+    if not models_executed:
+        st.error("Nenhum modelo produziu resultados válidos.")
     else:
-        models_with_results = list(all_results.keys())
-        rank_table = pd.DataFrame({"Alternativa": alts})
-        for m in models_with_results: rank_table[m] = all_results[m]["ranking"]
+        consolidated_df = pd.DataFrame({"Alternativa": alts})
+        for m in models_executed: consolidated_df[m] = all_results[m]["ranking"]
+            
+        consolidated_df["Posição Média"] = consolidated_df[models_executed].mean(axis=1).round(2)
+        # Borda invertido: A menor média fica em 1º
+        consolidated_df["Ranking Consolidado"] = ranking_from_scores(consolidated_df["Posição Média"].values, higher_is_better=False)
+        consolidated_df = consolidated_df.sort_values("Ranking Consolidado").reset_index(drop=True)
         
-        # Média de Posições (Quanto Menor, Melhor)
-        rank_table["Posição Média"] = rank_table[models_with_results].mean(axis=1).round(2)
+        st.info("💡 **Método de Borda:** A ordenação baseia-se na menor posição média. Valores menores (próximos de 1) são melhores.")
+        styled_matrix = consolidated_df.style.format({"Posição Média": "{:.2f}"}).background_gradient(subset=models_executed + ["Posição Média", "Ranking Consolidado"], cmap="RdYlGn_r")
+        st.dataframe(styled_matrix, use_container_width=True, hide_index=True)
         
-        # Correção aqui: higher_is_better=False, o valor mais baixo ganha
-        rank_table["Ranking Final"] = ranking_from_scores(rank_table["Posição Média"].values, higher_is_better=False)
-        rank_table = rank_table.sort_values("Ranking Final").reset_index(drop=True)
-
-        st.subheader("Tabela de Rankings Consolidados (Método de Borda)")
-        st.info("A agregação utiliza a **média das posições**. Um valor mais baixo (próximo de 1) indica lugares superiores no pódio consistentemente.")
-        
-        styled = rank_table.style.format({"Posição Média": "{:.2f}"}).background_gradient(subset=models_with_results + ["Posição Média", "Ranking Final"], cmap="RdYlGn_r")
-        st.dataframe(styled, use_container_width=True, hide_index=True)
-
-        top3_alts = rank_table.sort_values("Ranking Final").head(3)["Alternativa"].tolist()
-        c1, c2, c3 = st.columns(3)
-        c1.metric("🥇 1º lugar", top3_alts[0] if len(top3_alts) > 0 else "—")
-        c2.metric("🥈 2º lugar", top3_alts[1] if len(top3_alts) > 1 else "—")
-        c3.metric("🥉 3º lugar", top3_alts[2] if len(top3_alts) > 2 else "—")
+        podium = consolidated_df["Alternativa"].tolist()
+        p1, p2, p3 = st.columns(3)
+        p1.metric("🥇 Vencedor Consensual", podium[0] if len(podium) > 0 else "—")
+        p2.metric("🥈 2º Classificado", podium[1] if len(podium) > 1 else "—")
+        p3.metric("🥉 3º Classificado", podium[2] if len(podium) > 2 else "—")
