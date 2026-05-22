@@ -1063,11 +1063,12 @@ with tabs[3]:
             all_results["PROMETHEE"] = {"scores": res["scores"], "ranking": res["ranking"]}
 
 # =============================================================================
-# TAB 5: VIKOR (ESTRUTURA SEMELHANTE)
+# TAB 5: VIKOR
 # =============================================================================
 with tabs[4]:
     st.header("⚖️ VIKOR — Compromise Solution for Conflicting Criteria")
     
+    # Teoria condensada (PILAR 2)
     render_theory_box(
         "⚖️ VIKOR — Resumo Teórico",
         [
@@ -1076,29 +1077,34 @@ with tabs[4]:
             "Recomenda alternativa com menor Q, sujeita a condições de aceitação C1 e C2."
         ],
         [
-            "Sⱼ = Σ wᵢ·(fᵢ* - fᵢⱼ)/(fᵢ* - fᵢ⁻)  [utilidade global]",
-            "Rⱼ = maxᵢ [wᵢ·(fᵢ* - fᵢⱼ)/(fᵢ* - fᵢ⁻)]  [pior desvio]",
-            "Qⱼ = v·(Sⱼ-S*)/(S⁻-S*) + (1-v)·(Rⱼ-R*)/(R⁻-R*)"
+            "S_j = sum_i w_i * (f_i* - f_ij) / (f_i* - f_i-)",
+            "R_j = max_i [w_i * (f_i* - f_ij) / (f_i* - f_i-)]",
+            "Q_j = v*(S_j-S*)/(S--S*) + (1-v)*(R_j-R*)/(R--R*)"
         ]
     )
     
     if st.session_state.alternatives.empty or st.session_state.criteria.empty or st.session_state.matrix is None:
-        st.info("👈 Configure dados na aba **📋 Dados & Matriz** primeiro.")
+        st.info("Configure dados na aba **Dados & Matriz** primeiro.")
     else:
         mat = st.session_state.matrix[st.session_state.criteria['ID']].values.astype(float)
         alts = st.session_state.alternatives['ID'].tolist()
         weights = get_weights()
         types = st.session_state.criteria['Tipo'].tolist()
         
-        v_param = st.slider("⚖️ Parâmetro v (estratégia de compromisso)", 0.0, 1.0, 0.5, 0.05,
-                           help="v=1: máxima utilidade de grupo | v=0: mínimo arrependimento individual")
+        v_param = st.slider(
+            "Parâmetro v (estratégia de compromisso)", 
+            0.0, 1.0, 0.5, 0.05,
+            help="v=1: máxima utilidade de grupo | v=0: mínimo arrependimento individual"
+        )
         
         res, err = safe_call(model_vikor, mat, weights, types, v_param)
         if err:
-            st.error(f"❌ Erro no VIKOR: {err}")
+            st.error(f"Erro no VIKOR: {err}")
         else:
-            st.markdown('<div class="step-box"><h5>🔹 Índices S (Utilidade) e R (Arrependimento)</h5></div>', unsafe_allow_html=True)
-            st.latex(r"S_j = \sum_i w_i \frac{f_i^* - f_{ij}}{f_i^* - f_i^-} \quad|\quad R_j = \max_i \left[ w_i \frac{f_i^* - f_{ij}}{f_i^* - f_i^-} \right]")
+            # Passo 1: Índices S e R
+            st.markdown('<div class="step-box"><h5>Passo 1-2: Índices S (Utilidade) e R (Arrependimento)</h5></div>', unsafe_allow_html=True)
+            st.latex(r"S_j = \sum_i w_i \frac{f_i^* - f_{ij}}{f_i^* - f_i^-}")
+            st.latex(r"R_j = \max_i \left[ w_i \frac{f_i^* - f_{ij}}{f_i^* - f_i^-} \right]")
             
             sr_df = pd.DataFrame({
                 'Alternativa': alts,
@@ -1107,25 +1113,47 @@ with tabs[4]:
             }).round(4)
             st.dataframe(sr_df, use_container_width=True, hide_index=True)
             
-            st.markdown('<div class="step-box"><h5>🔹 Índice Q e Ranking Final</h5></div>', unsafe_allow_html=True)
+            # Passo 3: Índice Q e Ranking
+            st.markdown('<div class="step-box"><h5>Passo 3: Índice Q e Ranking Final</h5></div>', unsafe_allow_html=True)
             st.latex(r"Q_j = v \frac{S_j - S^*}{S^- - S^*} + (1-v) \frac{R_j - R^*}{R^- - R^*}")
             
             rank_df = pd.DataFrame({
                 'Alternativa': alts,
                 'Q (Índice VIKOR)': res['Q'],
-                'Ranking (menor Q = melhor)': res['ranking']
-            }).sort_values('Ranking (menor Q = melhor)').reset_index(drop=True)
-            st.dataframe(rank_df.style.format({'Q (Índice VIKOR)': '{:.4f}'}),
-                        use_container_width=True, hide_index=True)
+                'Ranking': res['ranking']
+            }).sort_values('Ranking').reset_index(drop=True)
+            st.dataframe(
+                rank_df.style.format({'Q (Índice VIKOR)': '{:.4f}'}),
+                use_container_width=True, 
+                hide_index=True
+            )
             
-            fig = px.bar(rank_df, x='Alternativa', y='Q (Índice VIKOR)', color='Ranking (menor Q = melhor)',
-                        title="🏆 Ranking VIKOR — Índice de Compromisso Q",
-                        color_continuous_scale='RdYlGn_r', text_auto='.3f')
+            # Gráfico
+            fig = px.bar(
+                rank_df, 
+                x='Alternativa', 
+                y='Q (Índice VIKOR)', 
+                color='Ranking',
+                title="Ranking VIKOR — Índice de Compromisso Q (menor = melhor)",
+                color_continuous_scale='RdYlGn_r', 
+                text_auto='.3f'
+            )
             fig.update_layout(height=400)
             st.plotly_chart(fig, use_container_width=True)
             
-            render_sensitivity(lambda m,w,t: model_vikor(m,w,t,v_param), mat, weights, types, alts, -res['Q'], res['ranking'], label="Q")
-            all_results["VIKOR"] = {"scores": -res['Q'], "ranking": res['ranking"]}
+            # PILAR 4: Sensibilidade no fundo
+            render_sensitivity(
+                lambda m, w, t: model_vikor(m, w, t, v_param), 
+                mat, weights, types, alts, 
+                -res['Q'], res['ranking'], 
+                label="Q"
+            )
+            
+            # Guardar resultados para dashboard (PILAR 5: foco)
+            all_results["VIKOR"] = {
+                "scores": -res['Q'], 
+                "ranking": res['ranking"]
+            }
 
 # =============================================================================
 # TAB 6: MAUT
