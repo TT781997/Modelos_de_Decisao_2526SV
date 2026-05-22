@@ -1152,7 +1152,7 @@ with tabs[4]:
             # Guardar resultados para dashboard (PILAR 5: foco)
             all_results["VIKOR"] = {
                 "scores": -res['Q'], 
-                "ranking": res['ranking"]
+                "ranking": res['ranking']
             }
 
 # =============================================================================
@@ -1266,7 +1266,7 @@ with tabs[6]:
             st.plotly_chart(fig, use_container_width=True)
             
             render_sensitivity(model_copras, mat, weights, types, alts, res['N'], res['ranking'], label="N")
-            all_results["COPRAS"] = {"scores": res['N'], "ranking": res['ranking"]}
+            all_results["COPRAS"] = {"scores": res['N'], "ranking": res['ranking']}
 
 # =============================================================================
 # TAB 8: ELECTRE I
