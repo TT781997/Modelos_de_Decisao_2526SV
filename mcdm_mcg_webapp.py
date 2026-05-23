@@ -24,38 +24,73 @@ st.set_page_config(page_title="MCDM Dashboard v2", page_icon="📊", layout="wid
 
 CSS = """
 <style>
+/* Boxes com cores explícitas para funcionar em DARK e LIGHT theme */
 .theory-box {
-    background: linear-gradient(135deg, #f0f7ff 0%, #e0ecff 100%);
+    background: linear-gradient(135deg, #f0f7ff 0%, #e0ecff 100%) !important;
     border-left: 4px solid #1F4E78; padding: 16px 20px; border-radius: 6px;
-    margin: 12px 0 20px 0; font-size: 14px; line-height: 1.5; color: #1F4E78;
+    margin: 12px 0 20px 0; font-size: 14px; line-height: 1.5;
+    color: #1F4E78 !important;
 }
-.theory-box h4 { color: #1F4E78; margin-top: 0; font-size: 16px; font-weight: 700; }
+.theory-box * { color: #1F4E78 !important; }
+.theory-box h4 { color: #1F4E78 !important; margin-top: 0; font-size: 16px; font-weight: 700; }
 .theory-box ul, .theory-box ol { margin: 8px 0 0 20px; }
-.theory-box code { background: #fff; padding: 2px 6px; border-radius: 3px; font-size: 13px; color: #c7254e; }
+.theory-box code { background: #fff !important; padding: 2px 6px; border-radius: 3px; font-size: 13px; color: #c7254e !important; }
+.theory-box b, .theory-box strong { color: #1F4E78 !important; font-weight: 700; }
+
+.purpose-box {
+    background: #e8f5e9 !important; padding: 12px 18px; border-left: 4px solid #2e7d32;
+    border-radius: 4px; margin-bottom: 16px; color: #1b5e20 !important; font-size: 15px;
+}
+.purpose-box * { color: #1b5e20 !important; }
+.purpose-box b, .purpose-box strong { color: #1b5e20 !important; font-weight: 700; }
+
 .step-header {
-    background: #2E75B6; color: white; padding: 8px 14px; border-radius: 4px;
+    background: #2E75B6 !important; color: white !important; padding: 8px 14px; border-radius: 4px;
     font-weight: 600; margin: 16px 0 8px 0; font-size: 15px;
 }
+
 .sensitivity-box {
-    background: linear-gradient(135deg, #fff8e1 0%, #ffecb3 100%);
+    background: linear-gradient(135deg, #fff8e1 0%, #ffecb3 100%) !important;
     border: 2px solid #f57c00; padding: 18px; border-radius: 8px; margin: 24px 0 12px 0;
+    color: #5d3a00 !important;
 }
-.sensitivity-box h3 { color: #e65100; margin-top: 0; font-size: 18px; }
+.sensitivity-box * { color: #5d3a00 !important; }
+.sensitivity-box h3 { color: #e65100 !important; margin-top: 0; font-size: 18px; }
+.sensitivity-box b, .sensitivity-box strong { color: #bf360c !important; font-weight: 700; }
+
 .injection-active {
-    background: #fce4ec; border: 2px solid #c2185b; padding: 8px 14px;
-    border-radius: 6px; color: #c2185b; font-weight: 700; text-align: center; margin: 12px 0;
+    background: #fce4ec !important; border: 2px solid #c2185b; padding: 8px 14px;
+    border-radius: 6px; color: #c2185b !important; font-weight: 700; text-align: center; margin: 12px 0;
 }
+.injection-active * { color: #c2185b !important; }
+
 .result-box {
-    background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
+    background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%) !important;
     border: 2px solid #2e7d32; padding: 18px; border-radius: 8px; margin: 16px 0;
-    color: #1b5e20; font-size: 16px; font-weight: 600;
+    color: #1b5e20 !important; font-size: 16px; font-weight: 600;
 }
+.result-box * { color: #1b5e20 !important; }
+.result-box b, .result-box strong { color: #1b5e20 !important; }
+
 .warning-box {
-    background: #fff3e0; border-left: 3px solid #ef6c00; padding: 10px 16px;
-    border-radius: 4px; margin: 8px 0; color: #e65100;
+    background: #fff3e0 !important; border-left: 3px solid #ef6c00; padding: 10px 16px;
+    border-radius: 4px; margin: 8px 0; color: #e65100 !important;
 }
+.warning-box * { color: #e65100 !important; }
+.warning-box b, .warning-box strong { color: #bf360c !important; }
+
+.cta-box {
+    background: linear-gradient(135deg, #fff9c4 0%, #fff59d 100%) !important;
+    border: 3px dashed #f9a825; padding: 24px; border-radius: 12px; margin: 20px 0;
+    color: #f57f17 !important; font-size: 17px; text-align: center;
+}
+.cta-box * { color: #5d4037 !important; }
+.cta-box h2 { color: #e65100 !important; font-size: 24px; margin-top: 0; }
+.cta-box b, .cta-box strong { color: #bf360c !important; font-weight: 700; }
+
 .stTabs [data-baseweb="tab"] { padding: 10px 18px; font-weight: 600; }
 .stTabs [aria-selected="true"] { background-color: #1F4E78 !important; color: white !important; }
+
 .sidebar-section {
     background: #f5f5f5; padding: 12px; border-radius: 6px; margin: 10px 0;
     border-left: 3px solid #1F4E78;
@@ -199,8 +234,7 @@ def theory_box(title, html):
 def purpose_box(text):
     """Caixa verde 'Para que serve esta aba' — usar no topo de cada aba."""
     st.markdown(
-        f'<div style="background:#e8f5e9; padding:10px 16px; border-left:4px solid #2e7d32; '
-        f'border-radius:4px; margin-bottom:16px;"><b>📌 Para que serve esta aba:</b> {text}</div>',
+        f'<div class="purpose-box"><b>📌 Para que serve esta aba:</b> {text}</div>',
         unsafe_allow_html=True
     )
 
@@ -209,11 +243,19 @@ def step_header(text):
 
 def check_valid_input():
     matrix, alts, crits, types = get_decision_matrix()
-    if len(alts) < 2 or len(crits) < 2:
-        st.warning("⚠️ Defina pelo menos 2 alternativas e 2 critérios.")
-        return False
-    if matrix.size == 0 or np.all(matrix == 0):
-        st.warning("⚠️ Matriz vazia ou só com zeros.")
+    if len(alts) < 2 or len(crits) < 2 or matrix.size == 0 or np.all(matrix == 0):
+        st.markdown(
+            """<div class="cta-box">
+            <h2>👈 SEM DADOS — CARREGUE NA BARRA LATERAL</h2>
+            <p>Para usar esta aba, primeiro tem de carregar uma <b>matriz de decisão</b>.</p>
+            <p><b>3 formas (na sidebar à esquerda):</b></p>
+            <p>📋 <b>Demo</b> → "Carregar este caso" &nbsp;·&nbsp;
+               ✏️ <b>Manual</b> → "Criar matriz vazia" ou colar do Excel &nbsp;·&nbsp;
+               📁 <b>Excel</b> → upload .xlsx</p>
+            <p><i>Vá à aba 🏠 Início para ver as 3 opções em detalhe.</i></p>
+            </div>""",
+            unsafe_allow_html=True
+        )
         return False
     return True
 
@@ -291,20 +333,20 @@ def render_sensitivity(score_function, alts, crits, base_weights, higher_is_bett
         styles = []
         for col in row.index:
             if col == "Base":
-                styles.append("background-color: #f0f0f0; font-weight: 700;")
+                styles.append("background-color: #d0d0d0; color: #000000; font-weight: 700;")
             else:
                 val = row[col]
                 try:
                     if val is None or pd.isna(val):
-                        styles.append("background-color: #fafafa; color: #999;")
+                        styles.append("background-color: #fafafa; color: #999999;")
                     elif val < base:
                         styles.append("background-color: #C6EFCE; color: #006100; font-weight: 600;")
                     elif val > base:
                         styles.append("background-color: #FFC7CE; color: #9C0006; font-weight: 600;")
                     else:
-                        styles.append("")
+                        styles.append("background-color: #ffffff; color: #000000;")
                 except Exception:
-                    styles.append("")
+                    styles.append("background-color: #ffffff; color: #000000;")
         return styles
 
     st.markdown(f"**Variação ± aplicada:** {variation_pct}% (ajustável na barra lateral)")
@@ -538,7 +580,7 @@ with st.sidebar:
     st.markdown("---")
 
     # ============== SECÇÃO 4: EDITORES (sempre acessíveis) ==============
-    with st.expander("📋 Editor de Critérios", expanded=False):
+    with st.expander("📋 Editor de Critérios", expanded=True):
         edited_crit = st.data_editor(
             st.session_state.criteria_df,
             num_rows="dynamic",
@@ -574,7 +616,7 @@ with st.sidebar:
         else:
             st.caption(f"✅ Σ = **{soma:.4f}**")
 
-    with st.expander("🔢 Editor de Matriz de Decisão", expanded=False):
+    with st.expander("🔢 Editor de Matriz de Decisão", expanded=True):
         crit_names = st.session_state.criteria_df["Critério"].astype(str).tolist()
         matrix_col_config = {
             "Alternativa": st.column_config.TextColumn("Alternativa", required=True, width="small"),
@@ -628,40 +670,93 @@ with tabs[0]:
     )
 
     st.markdown("---")
+
+    # ===== CTA: ONDE METER OS DADOS — primeira coisa que se vê =====
+    st.markdown(
+        """<div class="cta-box">
+        <h2>👈 ONDE METER OS DADOS DO ENUNCIADO?</h2>
+        <p>Os dados (matriz alternativas × critérios) <b>entram pela BARRA LATERAL</b> à esquerda.
+        Se não a vê, clique no ícone <b>›</b> no canto superior esquerdo para a abrir.</p>
+        <p>Tem 3 formas (cada uma com botão próprio):</p>
+        </div>""",
+        unsafe_allow_html=True
+    )
+
+    # 3 opções de entrada — visualmente claras
+    oc1, oc2, oc3 = st.columns(3)
+    with oc1:
+        st.markdown(
+            """<div style="background:#e3f2fd; padding:16px; border-radius:8px; border-left:4px solid #1976d2; color:#0d47a1;">
+            <h4 style="color:#0d47a1; margin-top:0;">📋 Opção 1 — Demo</h4>
+            <p style="color:#0d47a1;"><b>Use um caso pré-carregado</b> (mais rápido para experimentar).</p>
+            <ol style="color:#0d47a1;">
+                <li>Sidebar → <b>"📋 Demo (pré-definidos)"</b></li>
+                <li>Escolher: Caso MCG / Fornecedor / Investimento</li>
+                <li>Clicar <b>"📥 Carregar este caso"</b></li>
+            </ol>
+            </div>""",
+            unsafe_allow_html=True
+        )
+    with oc2:
+        st.markdown(
+            """<div style="background:#fff3e0; padding:16px; border-radius:8px; border-left:4px solid #f57c00; color:#bf360c;">
+            <h4 style="color:#bf360c; margin-top:0;">✏️ Opção 2 — Manual / Paste</h4>
+            <p style="color:#bf360c;"><b>Inserir manualmente</b> os dados do seu enunciado.</p>
+            <ol style="color:#bf360c;">
+                <li>Sidebar → <b>"✏️ Manual (editor + paste)"</b></li>
+                <li><b>Opção A:</b> definir N alts × N crits → "Criar matriz vazia" → preencher nos editores expandidos</li>
+                <li><b>Opção B:</b> copiar do Excel (Ctrl+C) → colar na text-area → "Confirmar e carregar"</li>
+            </ol>
+            </div>""",
+            unsafe_allow_html=True
+        )
+    with oc3:
+        st.markdown(
+            """<div style="background:#f3e5f5; padding:16px; border-radius:8px; border-left:4px solid #7b1fa2; color:#4a148c;">
+            <h4 style="color:#4a148c; margin-top:0;">📁 Opção 3 — Excel</h4>
+            <p style="color:#4a148c;"><b>Carregar ficheiro</b> .xlsx do enunciado.</p>
+            <ol style="color:#4a148c;">
+                <li>Sidebar → <b>"📁 Carregar Excel"</b></li>
+                <li>Arrastar/escolher ficheiro</li>
+                <li>Clicar <b>"📁 Processar Excel"</b></li>
+            </ol>
+            <p style="color:#4a148c; font-size:13px;"><i>Formato: 1ª coluna = nomes alts, restantes = critérios</i></p>
+            </div>""",
+            unsafe_allow_html=True
+        )
+
+    st.markdown("---")
     st.subheader("🚀 Como começar em 4 passos")
 
     c1, c2, c3, c4 = st.columns(4)
     with c1:
         st.markdown("### 1️⃣ Dados")
         st.markdown(
-            "Na **barra lateral** escolha como fornece os dados:\n\n"
-            "• **Demo**: 3 casos pré-carregados\n\n"
-            "• **Manual**: define N alts × N crits OU cola do Excel\n\n"
-            "• **Excel**: upload de `.xlsx`"
+            "👈 Na **barra lateral** escolha como fornece os dados (ver acima).\n\n"
+            "Depois ajuste **tipo (max/min)** e **pesos manuais** no editor (sidebar)."
         )
     with c2:
         st.markdown("### 2️⃣ Pesos")
         st.markdown(
-            "Defina a importância de cada critério:\n\n"
+            "Defina importância dos critérios:\n\n"
             "• **Manual**: edita pesos na sidebar\n\n"
             "• **Motor** (aba ⚖️): SWING, SMART, Entropia, CRITIC\n\n"
-            "• **AHP** (aba 🔍): comparação par-a-par"
+            "• **AHP** (aba 🔍): par-a-par"
         )
     with c3:
         st.markdown("### 3️⃣ Modelos")
         st.markdown(
-            "Veja resultados em cada aba:\n\n"
-            "• TOPSIS, PROMETHEE II, VIKOR, COPRAS, ELECTRE III, MAUT, DEMATEL, "
-            "Fuzzy TOPSIS, Fuzzy AHP\n\n"
-            "Cada um dá um ranking + análise de sensibilidade"
+            "Cada aba executa um modelo:\n\n"
+            "TOPSIS, PROMETHEE II, VIKOR, COPRAS, ELECTRE III, MAUT, DEMATEL, Fuzzy TOPSIS, Fuzzy AHP\n\n"
+            "Cada uma dá ranking + sensibilidade."
         )
     with c4:
         st.markdown("### 4️⃣ Decisão")
         st.markdown(
             "Consolide e decida:\n\n"
-            "• **📊 Gráficos**: visualizações decisivas\n\n"
-            "• **🏆 Dashboard**: consenso entre modelos\n\n"
-            "• **📄 Relatório**: descarregar resultado final"
+            "• **📊 Gráficos**: visualizações\n\n"
+            "• **🏆 Dashboard**: consenso\n\n"
+            "• **📄 Relatório**: descarregar"
         )
 
     st.markdown("---")
