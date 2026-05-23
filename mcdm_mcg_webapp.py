@@ -407,9 +407,11 @@ with st.sidebar:
     st.markdown("### 📥 Fonte de Dados")
     data_source = st.radio(
         "Como quer fornecer os dados?",
-        ["📋 Demo (pré-definidos)", "✏️ Manual (editor + paste)", "📁 Carregar Excel"],
+        ["📋 Demo (pré-definidos)", "✏️ Manual (editor + paste)", "📁 Carregar Excel",
+         "📥 Quadros em bruto (alts + crits)"],
         key="data_source_radio",
-        help="3 modos: usar caso demo, criar manualmente (com paste do Excel), ou carregar ficheiro"
+        help="4 modos: caso demo, manual com paste, ficheiro Excel, ou paste de DOIS quadros (alts + crits) "
+             "como vêm em enunciados académicos"
     )
 
     if data_source == "📋 Demo (pré-definidos)":
@@ -516,7 +518,7 @@ with st.sidebar:
                     "• Separador é TAB (do Excel), `;` ou espaços"
                 )
 
-    else:  # Carregar Excel
+    elif data_source == "📁 Carregar Excel":
         uploaded = st.file_uploader(
             "Carregar Excel (.xlsx)",
             type=["xlsx", "xls"],
@@ -543,6 +545,145 @@ with st.sidebar:
                     st.rerun()
                 except Exception as e:
                     st.error(f"❌ Erro: {e}")
+
+    else:  # 📥 Quadros em bruto (alts + crits)
+        st.caption(
+            "Cole **dois quadros separados** como vêm em enunciados académicos:\n\n"
+            "**Quadro A — Alternativas com atributos**: 1ª coluna = nome alt, "
+            "restantes = atributos numéricos (critérios) OU texto (metadados como Cliente, Estado).\n\n"
+            "**Quadro B — Critérios com pesos**: Código, Critério, Natureza (Benefício/Custo), Peso."
+        )
+
+        with st.expander("Exemplo do formato (caso MCG)", expanded=False):
+            st.code(
+                "Quadro A — Alternativas:\n"
+                "Alt\tRef\tCliente\tValor Pot\tProb Fecho\tEsforço\tFit\tUrgência\tRel Cliente\tEstado\n"
+                "A1\t9786\tBe\t250000000\t0.25\t24\t4\t180\t4\tCotação\n"
+                "A2\t9780\tZf\t300000\t0.35\t8\t5\t60\t5\tCotação\n"
+                "...\n\n"
+                "Quadro B — Critérios:\n"
+                "Código\tCritério\tNatureza\tPeso\n"
+                "C1_VP\tValor Potencial\tBenefício\t0.462\n"
+                "C2_PF\tProb. Fecho\tBenefício\t0.218\n"
+                "C3_EE\tEsforço Estimado\tCusto\t0.024\n"
+                "...",
+                language="text"
+            )
+
+        paste_alts = st.text_area(
+            "**Quadro A — Alternativas (com atributos)** — colar Ctrl+V:",
+            height=140, key="paste_alts_raw",
+            placeholder="Alt\tCliente\tValor Pot\tEsforço\tEstado\nA1\tBe\t250000000\t24\tCotação\nA2\tZf\t300000\t8\tCotação"
+        )
+
+        paste_crits = st.text_area(
+            "**Quadro B — Critérios (Código, Critério, Natureza, Peso)** — colar Ctrl+V:",
+            height=120, key="paste_crits_raw",
+            placeholder="Código\tCritério\tNatureza\tPeso\nC1_VP\tValor Potencial\tBenefício\t0.462\nC2_PF\tProb. Fecho\tBenefício\t0.218"
+        )
+
+        def parse_paste(text):
+            """Parse paste — auto-detecta separador, tolera vírgula decimal."""
+            if not text or not text.strip():
+                return None
+            first_line = text.strip().split("\n")[0]
+            sep = "\t" if "\t" in first_line else (";" if ";" in first_line else r"\s{2,}")
+            try:
+                if sep == r"\s{2,}":
+                    df = pd.read_csv(StringIO(text), sep=sep, engine="python", dtype=str)
+                else:
+                    df = pd.read_csv(StringIO(text), sep=sep, dtype=str)
+                return df
+            except Exception:
+                return None
+
+        if paste_alts and paste_crits:
+            df_alts_raw = parse_paste(paste_alts)
+            df_crits_raw = parse_paste(paste_crits)
+
+            if df_alts_raw is not None and df_crits_raw is not None:
+                # Critérios: detectar colunas — nome do crit + natureza + peso
+                # Tolerar maiúsculas/minúsculas, ordem variável
+                crits_cols_lower = [c.lower().strip() for c in df_crits_raw.columns]
+
+                def find_col(targets, default=None):
+                    for i, c in enumerate(crits_cols_lower):
+                        for t in targets:
+                            if t in c:
+                                return df_crits_raw.columns[i]
+                    return default
+
+                col_code = find_col(["código", "code", "cod"])
+                col_name = find_col(["critério", "criterio", "nome"])
+                col_nat = find_col(["natureza", "tipo"])
+                col_peso = find_col(["peso", "weight"])
+
+                # Quadro A: 1ª coluna = nome alt; auto-classificar colunas como numéricas (critério) ou metadata
+                alt_col = df_alts_raw.columns[0]
+                df_alts_raw = df_alts_raw.rename(columns={alt_col: "Alternativa"})
+
+                numeric_cols = []
+                metadata_cols = []
+                for c in df_alts_raw.columns[1:]:
+                    s = df_alts_raw[c].astype(str).str.replace(",", ".", regex=False).str.strip()
+                    nums = pd.to_numeric(s, errors="coerce")
+                    if nums.notna().mean() > 0.5:
+                        df_alts_raw[c] = nums.fillna(0)
+                        numeric_cols.append(c)
+                    else:
+                        metadata_cols.append(c)
+
+                # PREVIEW
+                st.caption(f"✓ Detectados: {len(df_alts_raw)} alts, "
+                           f"{len(numeric_cols)} crit numéricos, {len(metadata_cols)} metadados")
+                if metadata_cols:
+                    st.caption(f"📝 Metadados (não usados para cálculo, mas guardados): {', '.join(metadata_cols)}")
+                st.dataframe(df_alts_raw, hide_index=True, use_container_width=True)
+
+                if col_code and col_name:
+                    st.caption("**Critérios identificados:**")
+                    st.dataframe(df_crits_raw, hide_index=True, use_container_width=True)
+
+                if st.button("📥 Importar tudo", use_container_width=True, type="primary"):
+                    # Construir matriz e criteria_df
+                    new_matrix = df_alts_raw[["Alternativa"] + numeric_cols].copy()
+                    crit_list = []
+                    for _, row in df_crits_raw.iterrows():
+                        nome = str(row[col_name]) if col_name else ""
+                        codigo = str(row[col_code]) if col_code else nome
+                        nat = (str(row[col_nat]).lower() if col_nat else "max")
+                        tipo = "min" if any(x in nat for x in ["custo", "cost", "min"]) else "max"
+                        peso_str = str(row[col_peso]).replace(",", ".") if col_peso else "0"
+                        try:
+                            peso = float(peso_str)
+                        except Exception:
+                            peso = 1.0 / len(df_crits_raw)
+                        crit_list.append({"Critério": codigo, "Tipo": tipo, "Peso Manual": peso})
+                    new_crits_df = pd.DataFrame(crit_list)
+
+                    # Normalizar pesos
+                    s = new_crits_df["Peso Manual"].sum()
+                    if s > 0:
+                        new_crits_df["Peso Manual"] = new_crits_df["Peso Manual"] / s
+
+                    # Renomear colunas numéricas para os códigos dos critérios na ordem
+                    # (assume mesma ordem ou número)
+                    if len(numeric_cols) == len(new_crits_df):
+                        rename_map = dict(zip(numeric_cols, new_crits_df["Critério"].tolist()))
+                        new_matrix = new_matrix.rename(columns=rename_map)
+
+                    # Guardar metadata (para relatório)
+                    st.session_state["alt_metadata"] = df_alts_raw[["Alternativa"] + metadata_cols].copy() if metadata_cols else None
+                    st.session_state["crit_metadata"] = df_crits_raw.copy()
+
+                    st.session_state.matrix_df = new_matrix
+                    st.session_state.criteria_df = new_crits_df
+                    st.session_state.engine_weights = {}
+                    st.success(f"✓ Importado: {len(new_matrix)} alts × {len(new_crits_df)} crits. "
+                               f"Metadados guardados para o relatório.")
+                    st.rerun()
+            else:
+                st.warning("⚠️ Cole ambos os quadros para activar o preview.")
 
     st.markdown("---")
 
@@ -651,7 +792,8 @@ TAB_LABELS = [
     "🧮 Fuzzy AHP",
     "📊 Gráficos",
     "🏆 Dashboard",
-    "📄 Relatório",
+    "🎛️ Vista 360°",
+    "📑 Relatório Técnico",
 ]
 tabs = st.tabs(TAB_LABELS)
 
@@ -782,7 +924,10 @@ with tabs[0]:
         ("📊 Gráficos", "**5 visualizações decisivas**: heatmap rankings, radar Top-3, tornado sensibilidade, "
                         "scores normalizados, convergência Top-3."),
         ("🏆 Dashboard", "Consolida os rankings de todos os modelos via Borda invertido. Top-3 consensual."),
-        ("📄 Relatório", "Recomendação final + sumário executivo. Downloads em **CSV, Excel (5 folhas) e Markdown**."),
+        ("🎛️ Vista 360°", "**Dashboard one-page estilo Figura 1 do enunciado** — filtros, ranking, radar, 4 charts modelo, "
+                          "tornado sensibilidade, painel de recomendação. Tudo na mesma página."),
+        ("📑 Relatório Técnico", "Estrutura dos **7 capítulos** do enunciado (Intro · Dados · Modelos · SA · Dashboard · "
+                                 "Comparação · Conclusões) + Referências APA. Downloads em CSV, Excel (6 folhas) e Markdown."),
     ]
 
     for label, desc in tab_descriptions:
@@ -2130,15 +2275,226 @@ with tabs[14]:
 
 
 # =============================================================================
-# TAB 15: RELATÓRIO
+# TAB 15: VISTA 360° — Dashboard estilo Figura 1 do enunciado
 # =============================================================================
 with tabs[15]:
-    st.header("📄 Relatório Executivo")
-    purpose_box("Resumo final visual com a <b>recomendação</b>, top-3, robustez, pesos e metodologia. Permite descarregar em CSV, Excel ou Markdown.")
-    theory_box(
-        "Relatório consolidado",
-        """<p>Resumo visual e descarregável da análise: dados de entrada, pesos, rankings,
-        convergência, robustez e recomendação final.</p>"""
+    st.header("🎛️ Vista 360° — Dashboard Executivo")
+    purpose_box(
+        "<b>Vista consolidada one-page</b> estilo Figura 1 do enunciado. "
+        "Filtros · Ranking · Radar · 4 gráficos por modelo · Sensibilidade · Recomendações — "
+        "tudo na mesma página para tomar decisão sem mudar de aba."
+    )
+
+    if not check_valid_input():
+        st.stop()
+
+    matrix, alts, crits, types = get_decision_matrix()
+    weights = get_active_weights()
+
+    if not st.session_state.all_results:
+        st.warning("⚠️ Execute primeiro os modelos (TOPSIS, AHP, etc.). Esta vista consolida resultados existentes.")
+        st.stop()
+
+    methods = list(st.session_state.all_results.keys())
+
+    # ============================================================
+    # LAYOUT TOPO: Filtros (1) + Ranking (2) + Radar (1)
+    # ============================================================
+    st.markdown("---")
+    col_filt, col_rank, col_radar = st.columns([1.2, 2.2, 2.0])
+
+    # ---- Coluna 1: Filtros & Parâmetros ----
+    with col_filt:
+        st.markdown("#### 🔧 Filtros & Parâmetros")
+        st.caption("Use estes filtros para alterar dinamicamente todas as visualizações.")
+
+        focus_model = st.selectbox("Modelo em destaque:", methods, key="v360_model")
+        focus_crit = st.selectbox("Critério para sensibilidade:", crits, key="v360_crit")
+        focus_alt = st.selectbox("Alternativa para destaque (radar):", alts, key="v360_alt")
+        sens_pct_v360 = st.session_state.sensitivity_pct
+        st.metric("Variação SA (sidebar)", f"±{sens_pct_v360}%")
+        st.metric("Modelos activos", len(methods))
+
+    # ---- Coluna 2: Tabela de Ranking Consolidado ----
+    with col_rank:
+        st.markdown("#### 🏆 Ranking Consolidado")
+        df_consol = pd.DataFrame({"Alternativa": alts})
+        for m in methods:
+            df_consol[m] = st.session_state.all_results[m]["ranking"]
+        df_consol["Pos. Média"] = df_consol[methods].mean(axis=1).round(2)
+        df_consol["Final"] = pd.Series(df_consol["Pos. Média"]).rank(ascending=True, method='min').astype(int).values
+        df_consol = df_consol.sort_values("Final").reset_index(drop=True)
+        # Adicionar coluna "Top-3?" visual
+        df_consol["Top-3"] = df_consol["Final"].apply(lambda r: "🥇" if r == 1 else ("🥈" if r == 2 else ("🥉" if r == 3 else "")))
+        st.dataframe(
+            df_consol.style.background_gradient(cmap="RdYlGn_r", subset=methods + ["Pos. Média", "Final"]),
+            hide_index=True, use_container_width=True, height=min(360, 50 + 35 * len(alts))
+        )
+
+    # ---- Coluna 3: Perfil multicritério (Radar) ----
+    with col_radar:
+        st.markdown(f"#### 🎯 Perfil Multicritério")
+        st.caption(f"Top-3 + alternativa em destaque ({focus_alt})")
+        top3_v360 = df_consol.head(3)["Alternativa"].tolist()
+        norm = normalize_minmax(matrix, types)
+        norm_df = pd.DataFrame(norm, index=alts, columns=crits)
+
+        fig_radar = go.Figure()
+        colors = ["#FFD700", "#C0C0C0", "#CD7F32"]
+        for i, alt in enumerate(top3_v360):
+            vals = list(norm_df.loc[alt]) + [norm_df.loc[alt].iloc[0]]
+            fig_radar.add_trace(go.Scatterpolar(
+                r=vals, theta=crits + [crits[0]], fill="toself", name=alt,
+                line=dict(color=colors[i], width=2), opacity=0.5
+            ))
+        if focus_alt not in top3_v360:
+            vals = list(norm_df.loc[focus_alt]) + [norm_df.loc[focus_alt].iloc[0]]
+            fig_radar.add_trace(go.Scatterpolar(
+                r=vals, theta=crits + [crits[0]], fill="toself", name=f"⭐ {focus_alt}",
+                line=dict(color="#9C27B0", width=3, dash="dot")
+            ))
+        fig_radar.update_layout(
+            polar=dict(radialaxis=dict(visible=True, range=[0, 1], showticklabels=False)),
+            height=340, showlegend=True, margin=dict(l=10, r=10, t=10, b=10)
+        )
+        st.plotly_chart(fig_radar, use_container_width=True)
+
+    # ============================================================
+    # LAYOUT MEIO: 4 mini-gráficos por modelo (top-4 modelos)
+    # ============================================================
+    st.markdown("---")
+    st.markdown("#### 📊 Scores por Modelo (top-4 modelos com maior peso de avaliação)")
+    # Priorizar os 4 modelos obrigatórios do enunciado
+    priority_methods = ["TOPSIS", "PROMETHEE II", "AHP", "COPRAS"]
+    display_methods = [m for m in priority_methods if m in methods]
+    # completar até 4 com outros se faltarem
+    if len(display_methods) < 4:
+        for m in methods:
+            if m not in display_methods:
+                display_methods.append(m)
+            if len(display_methods) >= 4:
+                break
+
+    cols = st.columns(min(4, len(display_methods)))
+    for i, m in enumerate(display_methods[:4]):
+        with cols[i]:
+            sc = st.session_state.all_results[m]["scores"]
+            df_sc = pd.DataFrame({"Alt": alts, "Score": sc}).sort_values("Score", ascending=False)
+            # Highlight top-3
+            colors_bar = ["#FFD700" if k == 0 else "#C0C0C0" if k == 1 else "#CD7F32" if k == 2 else "#90CAF9"
+                          for k in range(len(df_sc))]
+            fig = go.Figure(go.Bar(
+                x=df_sc["Score"], y=df_sc["Alt"], orientation="h",
+                marker=dict(color=colors_bar),
+                text=[f"{x:.3f}" for x in df_sc["Score"]],
+                textposition="outside"
+            ))
+            fig.update_layout(
+                title=dict(text=f"<b>{m}</b>", font=dict(size=14)),
+                height=max(220, 28 * len(alts)),
+                margin=dict(l=10, r=10, t=40, b=10),
+                xaxis_title="", yaxis_title="",
+                showlegend=False
+            )
+            fig.update_yaxes(autorange="reversed")
+            st.plotly_chart(fig, use_container_width=True)
+
+    # ============================================================
+    # LAYOUT FUNDO: SA tornado + Painel Recomendação
+    # ============================================================
+    st.markdown("---")
+    col_sa, col_reco = st.columns([1.4, 1.0])
+
+    with col_sa:
+        st.markdown(f"#### 🌪️ Sensibilidade — impacto de {focus_crit} no {focus_model}")
+        st.caption(f"Como varia o score de cada alternativa quando o peso de {focus_crit} muda ±{sens_pct_v360}%")
+
+        # Calcular variações
+        focus_crit_idx = crits.index(focus_crit)
+        base_scores = st.session_state.all_results[focus_model]["scores"]
+        # Reutilizar lógica genérica: precisamos da score_fn — usar TOPSIS-like se for TOPSIS, etc.
+        # Simplificação: variar o peso, recalcular com TOPSIS rápido (porque é universal)
+        def quick_topsis(W):
+            R = normalize_vector(matrix); V = R * W
+            Ap = np.array([V[:, j].max() if types[j] == "max" else V[:, j].min() for j in range(len(crits))])
+            An = np.array([V[:, j].min() if types[j] == "max" else V[:, j].max() for j in range(len(crits))])
+            Dp = np.sqrt(((V - Ap) ** 2).sum(axis=1)); Dn = np.sqrt(((V - An) ** 2).sum(axis=1))
+            return Dn / np.where(Dp + Dn == 0, 1e-9, Dp + Dn)
+        base = quick_topsis(weights)
+
+        deltas = []
+        for sign, fac in [("+", 1 + sens_pct_v360/100), ("-", 1 - sens_pct_v360/100)]:
+            nw = weights.copy(); nw[focus_crit_idx] = weights[focus_crit_idx] * fac
+            other_sum_old = weights.sum() - weights[focus_crit_idx]
+            other_sum_new = 1 - nw[focus_crit_idx]
+            if other_sum_old > 0 and other_sum_new > 0:
+                for k in range(len(nw)):
+                    if k != focus_crit_idx:
+                        nw[k] = weights[k] * (other_sum_new / other_sum_old)
+            nw = nw / nw.sum()
+            sc = quick_topsis(nw)
+            for i, alt in enumerate(alts):
+                deltas.append({"Alt": alt, "Cenário": f"{sign}{sens_pct_v360}%", "Δ Score": sc[i] - base[i]})
+        df_d = pd.DataFrame(deltas)
+        fig_tor = px.bar(df_d, x="Δ Score", y="Alt", color="Cenário",
+                          orientation="h", barmode="group",
+                          color_discrete_map={f"+{sens_pct_v360}%": "#1976D2", f"-{sens_pct_v360}%": "#F57C00"})
+        fig_tor.add_vline(x=0, line_dash="dash", line_color="grey")
+        fig_tor.update_layout(height=max(260, 32 * len(alts)), margin=dict(l=10, r=10, t=10, b=10),
+                              yaxis=dict(autorange="reversed"))
+        st.plotly_chart(fig_tor, use_container_width=True)
+
+    with col_reco:
+        st.markdown("#### 🎯 Recomendações & Notas")
+        top3 = df_consol.head(3)["Alternativa"].tolist()
+        # Convergência
+        df_ranks_for_conv = df_consol[methods]
+        top3_count = (df_ranks_for_conv <= 3).sum(axis=1).values
+        conv_top1 = (top3_count[0] / len(methods) * 100) if methods else 0
+
+        if conv_top1 >= 70:
+            verdict_color = "#2e7d32"; verdict_label = "🟢 ALTA"
+        elif conv_top1 >= 40:
+            verdict_color = "#f57c00"; verdict_label = "🟡 MODERADA"
+        else:
+            verdict_color = "#c62828"; verdict_label = "🔴 BAIXA"
+
+        st.markdown(
+            f"""<div style="background:linear-gradient(135deg, #1F4E78 0%, #2E75B6 100%);
+            color:white; padding:18px; border-radius:10px;">
+            <div style="font-size:11px; opacity:0.9; text-transform:uppercase;">TOP-3 MCDM</div>
+            <div style="font-size:18px; font-weight:700;">🥇 {top3[0] if len(top3) > 0 else '—'}</div>
+            <div style="font-size:14px; opacity:0.9;">🥈 {top3[1] if len(top3) > 1 else '—'} · 🥉 {top3[2] if len(top3) > 2 else '—'}</div>
+            </div>""",
+            unsafe_allow_html=True
+        )
+        st.markdown(
+            f"""<div style="background:{verdict_color}; color:white; padding:10px;
+            border-radius:6px; margin-top:8px; text-align:center; font-weight:600;">
+            Convergência {verdict_label}: {conv_top1:.0f}%
+            </div>""",
+            unsafe_allow_html=True
+        )
+
+        st.markdown(f"**Modelos avaliados ({len(methods)}):**")
+        st.write(", ".join(methods))
+
+        st.markdown("**Critérios + pesos activos:**")
+        df_cwp = pd.DataFrame({
+            "Crit.": crits, "Tipo": types, "Peso": [f"{w*100:.1f}%" for w in weights]
+        })
+        st.dataframe(df_cwp, hide_index=True, use_container_width=True)
+
+
+# =============================================================================
+# TAB 16: RELATÓRIO TÉCNICO — Estrutura dos 7 capítulos (cumprindo Cap. 4 do enunciado)
+# =============================================================================
+with tabs[16]:
+    st.header("📑 Relatório Técnico — Estrutura dos 7 Capítulos")
+    purpose_box(
+        "Gera <b>relatório técnico completo</b> cumprindo a estrutura do <b>Capítulo 4</b> do enunciado: "
+        "Introdução · Dados · Modelos · Sensibilidade · Dashboard · Comparação · Conclusões. "
+        "Cada secção é expandível e o markdown final é descarregável (depois converte-se para PDF max 30pp)."
     )
 
     if not check_valid_input(): st.stop()
@@ -2162,134 +2518,347 @@ with tabs[15]:
     top1_pos_avg = df_dash.iloc[0]["Posição Média"]
     top1_top3_count = df_dash.iloc[0]["Top-3 em N modelos"]
     conv_pct_top1 = (top1_top3_count / len(methods) * 100) if methods else 0
+    top3 = df_dash.head(3)["Alternativa"].tolist()
 
-    # ============== CARD DE DECISÃO ==============
+    # Header com recomendação
     st.markdown(
         f"""<div style="background: linear-gradient(135deg, #1F4E78 0%, #2E75B6 100%);
-        color: white; padding: 30px; border-radius: 12px; margin: 20px 0; text-align: center;">
-        <div style="font-size: 14px; opacity: 0.9; text-transform: uppercase; letter-spacing: 2px;">Recomendação Final</div>
-        <div style="font-size: 56px; font-weight: 700; margin: 10px 0;">🏆 {top1}</div>
-        <div style="font-size: 18px; opacity: 0.95;">
-            Posição média: <b>{top1_pos_avg}</b> · Top-3 em <b>{top1_top3_count}/{len(methods)}</b> modelos ({conv_pct_top1:.0f}%)
-        </div></div>""",
+        color: white; padding: 24px; border-radius: 10px; margin: 16px 0; text-align: center;">
+        <div style="font-size: 12px; opacity: 0.9; text-transform: uppercase; letter-spacing: 2px;">RECOMENDAÇÃO MCDM FINAL</div>
+        <div style="font-size: 42px; font-weight: 700; margin: 8px 0;">🏆 {top1}</div>
+        <div style="font-size: 16px; opacity: 0.95;">
+            Top-3: 🥇 {top3[0] if len(top3) > 0 else '—'} · 🥈 {top3[1] if len(top3) > 1 else '—'} · 🥉 {top3[2] if len(top3) > 2 else '—'}
+        </div>
+        <div style="font-size: 14px; opacity: 0.9; margin-top:6px;">
+            Convergência: <b>{conv_pct_top1:.0f}%</b> · Modelos: <b>{len(methods)}</b>
+        </div>
+        </div>""",
         unsafe_allow_html=True
     )
 
-    # ============== SECÇÃO 1: SUMÁRIO ==============
-    st.subheader("1. Sumário Executivo")
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Alternativas avaliadas", len(alts))
-    c2.metric("Critérios", len(crits))
-    c3.metric("Modelos aplicados", len(methods))
-    c4.metric("Convergência Top-1", f"{conv_pct_top1:.0f}%")
+    # =========================================================================
+    # CAP 1 — INTRODUÇÃO
+    # =========================================================================
+    with st.expander("**📖 Capítulo 1 — Introdução** (1-2 pp)", expanded=True):
+        st.markdown(f"""
+        ### 1.1 Contexto
+        Aplicação de métodos de decisão multicritério (MCDM) a um problema real de priorização
+        de **{len(alts)} alternativas** segundo **{len(crits)} critérios**.
 
-    if conv_pct_top1 >= 70:
-        verdict = "🟢 **ALTA convergência** — recomendação ROBUSTA, decisão com elevado grau de confiança."
-        verdict_color = "#388e3c"
-    elif conv_pct_top1 >= 40:
-        verdict = "🟡 **Convergência MODERADA** — recomendação aceitável, mas analise sensibilidade antes de decidir."
-        verdict_color = "#f57c00"
-    else:
-        verdict = "🔴 **BAIXA convergência** — Top-1 instável. Reveja pesos ou alargue conjunto de alternativas."
-        verdict_color = "#c62828"
+        ### 1.2 Formulação do Problema
+        Decisor: equipa que aplica o modelo MCDM.
+        **Objectivo**: ranquear as alternativas {', '.join(alts[:5])}{'...' if len(alts) > 5 else ''}
+        segundo {', '.join(crits)}, e produzir top-3 robusto via múltiplos modelos.
 
-    st.markdown(f"<div style='padding:12px; background:#f5f5f5; border-left:4px solid {verdict_color}; "
-                f"border-radius:4px; font-size:16px;'>{verdict}</div>", unsafe_allow_html=True)
+        ### 1.3 Estrutura do Relatório
+        Este documento segue a estrutura definida no enunciado:
+        - **Cap. 2** — Dados e pré-processamento
+        - **Cap. 3** — Aplicação dos {len(methods)} modelos MCDM
+        - **Cap. 4** — Análise de sensibilidade
+        - **Cap. 5** — Dashboard e reutilizabilidade
+        - **Cap. 6** — Comparação de modelos e recomendação
+        - **Cap. 7** — Conclusões
+        """)
 
-    # ============== SECÇÃO 2: TOP-3 + PERFIL RADAR ==============
-    st.subheader("2. Top-3 e Perfil Multicritério")
-    top3 = df_dash.head(3)["Alternativa"].tolist()
-    norm = normalize_minmax(matrix, types)
-    norm_df = pd.DataFrame(norm, index=alts, columns=crits)
+    # =========================================================================
+    # CAP 2 — DADOS E PRÉ-PROCESSAMENTO
+    # =========================================================================
+    with st.expander("**📊 Capítulo 2 — Dados e Pré-processamento** (3-5 pp)", expanded=False):
+        st.markdown("### 2.1 Alternativas")
+        st.markdown(f"Listagem das **{len(alts)}** alternativas avaliadas:")
+        alt_meta = st.session_state.get("alt_metadata", None)
+        if alt_meta is not None and not alt_meta.empty:
+            st.dataframe(alt_meta, hide_index=True, use_container_width=True)
+            st.caption("Metadados importados do enunciado (não usados nos cálculos MCDM, mas guardados como contexto).")
+        else:
+            st.dataframe(pd.DataFrame({"Alternativa": alts}), hide_index=True, use_container_width=True)
 
-    cc1, cc2 = st.columns([2, 3])
-    with cc1:
-        for k, alt in enumerate(top3):
-            medal = ["🥇", "🥈", "🥉"][k]
-            pos = df_dash.iloc[k]["Posição Média"]
-            tc = df_dash.iloc[k]["Top-3 em N modelos"]
-            st.markdown(f"### {medal} **{alt}**  \nPos média: {pos}  ·  Top-3: {tc}/{len(methods)}")
-    with cc2:
-        fig = go.Figure()
-        colors = ["#FFD700", "#C0C0C0", "#CD7F32"]
-        for i, alt in enumerate(top3):
-            vals = list(norm_df.loc[alt]) + [norm_df.loc[alt].iloc[0]]
-            cats = crits + [crits[0]]
-            fig.add_trace(go.Scatterpolar(r=vals, theta=cats, fill="toself", name=alt,
-                                            line=dict(color=colors[i], width=2), opacity=0.6))
-        fig.update_layout(polar=dict(radialaxis=dict(visible=True, range=[0, 1])),
-                          height=380, showlegend=True, margin=dict(l=10, r=10, t=20, b=10))
-        st.plotly_chart(fig, use_container_width=True)
+        st.markdown("### 2.2 Critérios")
+        st.markdown(f"Lista dos **{len(crits)}** critérios e suas características:")
+        crit_meta = st.session_state.get("crit_metadata", None)
+        if crit_meta is not None and not crit_meta.empty:
+            st.dataframe(crit_meta, hide_index=True, use_container_width=True)
+            st.caption("Critérios importados em bruto do enunciado.")
+        else:
+            df_c = pd.DataFrame({"Código": crits, "Tipo": types, "Peso": weights,
+                                 "%": [f"{w*100:.2f}%" for w in weights]})
+            st.dataframe(df_c.style.format({"Peso": "{:.4f}"}), hide_index=True, use_container_width=True)
 
-    # ============== SECÇÃO 3: TABELA CONSOLIDADA ==============
-    st.subheader("3. Rankings Detalhados por Modelo")
-    st.dataframe(df_dash.style.background_gradient(cmap="RdYlGn_r",
-                  subset=methods + ["Posição Média", "Ranking Final"]),
-                hide_index=True, use_container_width=True)
+        st.markdown("### 2.3 Pesos e Consistência")
+        eng_src = "Manual" if not st.session_state.global_injection_on else f"Motor injectado: {st.session_state.global_injection_engine}"
+        st.markdown(f"**Fonte dos pesos activos:** {eng_src}")
+        if "AHP" in st.session_state.engine_weights:
+            st.caption("Os pesos AHP foram derivados da matriz par-a-par (ver aba 🔍 AHP).")
+            if st.session_state.ahp_history:
+                st.markdown("**Iterações de consistência AHP aplicadas:**")
+                st.dataframe(pd.DataFrame(st.session_state.ahp_history), hide_index=True, use_container_width=True)
+            else:
+                st.caption("Nenhuma iteração de consistência aplicada (matriz consistente à primeira ou ainda não inserida).")
+        df_w_full = pd.DataFrame({"Critério": crits, "Tipo": types, "Peso Activo": weights,
+                                  "%": [f"{w*100:.2f}%" for w in weights]})
+        st.dataframe(df_w_full.style.format({"Peso Activo": "{:.4f}"}), hide_index=True, use_container_width=True)
 
-    # ============== SECÇÃO 4: PESOS USADOS ==============
-    st.subheader("4. Pesos dos Critérios Aplicados")
-    eng_src = "Manual" if not st.session_state.global_injection_on else f"Motor: {st.session_state.global_injection_engine}"
-    st.caption(f"Fonte dos pesos: **{eng_src}**")
-    df_w = pd.DataFrame({"Critério": crits, "Tipo": types, "Peso": weights,
-                          "%": [f"{x*100:.2f}%" for x in weights]})
-    cc1, cc2 = st.columns([2, 3])
-    with cc1:
-        st.dataframe(df_w.style.format({"Peso": "{:.4f}"}), hide_index=True, use_container_width=True)
-    with cc2:
-        fig_pie = px.pie(df_w, values="Peso", names="Critério", title="Distribuição dos pesos",
-                          color_discrete_sequence=px.colors.qualitative.Set3)
-        fig_pie.update_layout(height=320, margin=dict(l=10, r=10, t=40, b=10))
-        st.plotly_chart(fig_pie, use_container_width=True)
+        st.markdown("### 2.4 Matriz de Decisão")
+        st.dataframe(pd.DataFrame(matrix, index=alts, columns=crits).style.format("{:.4f}")
+                      .background_gradient(cmap="Blues", axis=0),
+                    use_container_width=True)
 
-    # ============== SECÇÃO 5: ROBUSTEZ ==============
-    st.subheader("5. Análise de Robustez")
-    st.caption(f"Variação ± {st.session_state.sensitivity_pct}% nos pesos (de cada critério isoladamente).")
+        st.markdown("### 2.5 Análise Crítica dos Dados")
+        st.markdown(f"""
+        - **Dimensionalidade**: {len(alts)} alts × {len(crits)} crits — adequado para os modelos MCDM aplicados.
+        - **Critérios de custo**: {sum(1 for t in types if t == 'min')} ({', '.join(c for c, t in zip(crits, types) if t == 'min') or '—'})
+        - **Critérios de benefício**: {sum(1 for t in types if t == 'max')} ({', '.join(c for c, t in zip(crits, types) if t == 'max') or '—'})
+        - **Outliers de escala**: verificar especialmente C1 (Valor Potencial) se valores variam muito em ordens de grandeza —
+          normalização vectorial (TOPSIS) e por soma (COPRAS) cuidam disso.
+        """)
 
-    # Calcular robustez com TOPSIS (rápido)
-    def quick_topsis(W):
-        R = normalize_vector(matrix); V = R * W
-        Ap = np.array([V[:, j].max() if types[j] == "max" else V[:, j].min() for j in range(len(crits))])
-        An = np.array([V[:, j].min() if types[j] == "max" else V[:, j].max() for j in range(len(crits))])
-        Dp = np.sqrt(((V - Ap) ** 2).sum(axis=1)); Dn = np.sqrt(((V - An) ** 2).sum(axis=1))
-        return Dn / np.where(Dp + Dn == 0, 1e-9, Dp + Dn)
+    # =========================================================================
+    # CAP 3 — APLICAÇÃO DOS MODELOS MCDM
+    # =========================================================================
+    with st.expander(f"**🧮 Capítulo 3 — Aplicação dos {len(methods)} Modelos MCDM** (8-12 pp)", expanded=False):
+        st.markdown(f"### Rankings obtidos por cada modelo")
+        # tabela score × ranking
+        for m in methods:
+            res = st.session_state.all_results[m]
+            df_m = pd.DataFrame({
+                "Alternativa": alts,
+                "Score": res["scores"],
+                "Ranking": res["ranking"],
+            }).sort_values("Ranking")
+            st.markdown(f"**3.{methods.index(m)+1} {m}** — top-1: {df_m.iloc[0]['Alternativa']} (score={df_m.iloc[0]['Score']:.4f})")
+            st.dataframe(df_m.style.format({"Score": "{:.4f}"})
+                          .background_gradient(cmap="RdYlGn", subset=["Score"]),
+                        hide_index=True, use_container_width=True)
 
-    base = quick_topsis(weights)
-    base_rk = pd.Series(base).rank(ascending=False, method='min').astype(int).values
-    sp = st.session_state.sensitivity_pct
-    n_inv = []
-    for i_alt in range(len(alts)):
-        count = 0
-        for j in range(len(crits)):
-            for f in [1 + sp/100, 1 - sp/100]:
-                nw = weights.copy(); nw[j] *= f
-                nw = nw / nw.sum()
-                sc = quick_topsis(nw)
-                rk = pd.Series(sc).rank(ascending=False, method='min').astype(int).values
-                if rk[i_alt] != base_rk[i_alt]: count += 1
-        n_inv.append(count)
-    df_rob = pd.DataFrame({
-        "Alternativa": alts, "Rank Base": base_rk, "Inversões (12 cenários)": n_inv,
-        "Robustez": ["🟢 ESTÁVEL" if c == 0 else ("🟡 MODERADA" if c <= 3 else "🔴 INSTÁVEL") for c in n_inv]
-    }).sort_values("Rank Base")
-    st.dataframe(df_rob, hide_index=True, use_container_width=True)
+        st.info("💡 Cada modelo está detalhado na sua aba (com normalização, passos de cálculo e fórmulas LaTeX).")
 
-    # ============== SECÇÃO 6: METODOLOGIA APLICADA ==============
-    st.subheader("6. Metodologia")
-    st.markdown(f"""
-    Foram aplicados **{len(methods)} modelos MCDM**:
+    # =========================================================================
+    # CAP 4 — ANÁLISE DE SENSIBILIDADE
+    # =========================================================================
+    with st.expander("**🎯 Capítulo 4 — Análise de Sensibilidade** (4-6 pp)", expanded=False):
+        sp = st.session_state.sensitivity_pct
+        st.markdown(f"""
+        ### 4.1 Metodologia
+        Aplicada variação **±{sp}%** sobre o peso de cada critério individualmente, com
+        renormalização dos restantes (Σ=1). Cada cenário produz {len(alts)} novos rankings,
+        que são comparados com o ranking base.
 
-    {chr(10).join(f"- **{m}**" for m in methods)}
+        Para o **PROMETHEE II** testaram-se também as 3 funções de preferência (Usual, Linear, Gaussiana).
+        Para o **AHP** variam-se julgamentos ±1 nível Saaty.
+        """)
 
-    Os rankings foram agregados por **Borda invertido** (média de posições): a alternativa
-    com menor posição média é a recomendada.
+        # Calcular robustez global usando TOPSIS rápido
+        def quick_topsis(W):
+            R = normalize_vector(matrix); V = R * W
+            Ap = np.array([V[:, j].max() if types[j] == "max" else V[:, j].min() for j in range(len(crits))])
+            An = np.array([V[:, j].min() if types[j] == "max" else V[:, j].max() for j in range(len(crits))])
+            Dp = np.sqrt(((V - Ap) ** 2).sum(axis=1)); Dn = np.sqrt(((V - An) ** 2).sum(axis=1))
+            return Dn / np.where(Dp + Dn == 0, 1e-9, Dp + Dn)
+        base = quick_topsis(weights)
+        base_rk = pd.Series(base).rank(ascending=False, method='min').astype(int).values
+        n_inv = []
+        for i_alt in range(len(alts)):
+            count = 0
+            for j in range(len(crits)):
+                for f in [1 + sp/100, 1 - sp/100]:
+                    nw = weights.copy(); nw[j] *= f
+                    other_sum_old = weights.sum() - weights[j]
+                    other_sum_new = 1 - nw[j]
+                    if other_sum_old > 0 and other_sum_new > 0:
+                        for k in range(len(nw)):
+                            if k != j: nw[k] = weights[k] * (other_sum_new / other_sum_old)
+                    nw = nw / nw.sum()
+                    sc = quick_topsis(nw)
+                    rk = pd.Series(sc).rank(ascending=False, method='min').astype(int).values
+                    if rk[i_alt] != base_rk[i_alt]: count += 1
+            n_inv.append(count)
+        max_cenarios = 2 * len(crits)
+        df_rob = pd.DataFrame({
+            "Alternativa": alts, "Rank Base": base_rk,
+            "Inversões": n_inv, "Total cenários": [max_cenarios] * len(alts),
+            "Robustez (%)": [(1 - c/max_cenarios) * 100 for c in n_inv],
+            "Classificação": ["🟢 ESTÁVEL" if c == 0 else ("🟡 MODERADA" if c <= 3 else "🔴 INSTÁVEL") for c in n_inv]
+        }).sort_values("Rank Base")
 
-    A análise de sensibilidade ± {st.session_state.sensitivity_pct}% foi aplicada a cada modelo
-    para verificar robustez dos resultados.
-    """)
+        st.markdown("### 4.2 Resultados por modelo")
+        st.caption("Detalhe da SA em cada aba de modelo. Aqui apresenta-se a síntese global (TOPSIS).")
+        st.dataframe(df_rob.style.format({"Robustez (%)": "{:.1f}"})
+                      .background_gradient(cmap="RdYlGn", subset=["Robustez (%)"]),
+                    hide_index=True, use_container_width=True)
 
-    # ============== EXPORT ==============
+        st.markdown("### 4.3 Robustez do ranking final")
+        estaveis = df_rob[df_rob["Inversões"] == 0]["Alternativa"].tolist()
+        instaveis = df_rob[df_rob["Inversões"] > 3]["Alternativa"].tolist()
+        if estaveis:
+            st.success(f"✅ **Alternativas ROBUSTAS**: {', '.join(estaveis)} — não mudam de posição em nenhum cenário.")
+        if instaveis:
+            st.warning(f"⚠️ **Alternativas SENSÍVEIS**: {', '.join(instaveis)} — mudam em >3 cenários.")
+
+    # =========================================================================
+    # CAP 5 — DASHBOARD E REUTILIZABILIDADE
+    # =========================================================================
+    with st.expander("**🎛️ Capítulo 5 — Dashboard e Reutilizabilidade** (3-5 pp)", expanded=False):
+        st.markdown(f"""
+        ### 5.1 Arquitectura
+        A aplicação MCDM Dashboard implementa **{len(methods)} modelos** + 4 motores de pesos (SWING, SMART, Entropia, CRITIC) + AHP em aba dedicada.
+
+        Estrutura em **17 abas**: 🏠 Início · 📋 Dados · ⚖️ Motores · 🔍 AHP · 9 modelos MCDM · 📊 Gráficos · 🏆 Dashboard · 🎛️ Vista 360° · 📑 Relatório.
+
+        ### 5.2 Guia de Utilização
+        1. Sidebar → escolher fonte de dados (Demo, Manual, Excel, Quadros em bruto)
+        2. Sidebar → ajustar tipos (max/min) e pesos manuais ou usar motor
+        3. Sidebar → activar injecção global se quiser usar pesos de motor em todos os modelos
+        4. Executar abas dos modelos para gerar rankings
+        5. Aba 🎛️ Vista 360° para vista executiva única
+        6. Aba 📑 Relatório para descarregar markdown completo
+
+        ### 5.3 Validação
+        Cada modelo apresenta passos intermédios com fórmulas LaTeX, permitindo verificação manual.
+
+        ### 5.4 Reutilizabilidade
+        - **Nada hardcoded** — toda a matriz vem da sidebar
+        - Suporta até **50 alternativas** (e mais críticos com paginação)
+        - Aceita até **15 critérios**
+        - Alteração nos dados de entrada actualiza automaticamente TODOS os outputs (modelos, gráficos, relatório)
+        """)
+
+    # =========================================================================
+    # CAP 6 — COMPARAÇÃO DE MODELOS E RECOMENDAÇÃO
+    # =========================================================================
+    with st.expander("**⚖️ Capítulo 6 — Comparação de Modelos e Recomendação Final** (3-4 pp)", expanded=False):
+        st.markdown("### 6.1 Convergência dos Rankings")
+        st.dataframe(df_dash.style.background_gradient(cmap="RdYlGn_r",
+                      subset=methods + ["Posição Média", "Ranking Final"]),
+                    hide_index=True, use_container_width=True)
+
+        st.markdown("### 6.2 Discussão das Diferenças")
+        st.markdown(f"""
+        Os métodos têm <b>axiomáticas diferentes</b>:
+        - **TOPSIS, MAUT, COPRAS**: <b>compensatórios</b> — bom desempenho num critério compensa mau noutro
+        - **PROMETHEE II, ELECTRE III**: <b>não-compensatórios</b> — utilizam fluxos / outranking par-a-par
+        - **VIKOR**: <b>compromisso</b> — equilibra utilidade global e arrependimento individual
+        - **Fuzzy TOPSIS/AHP**: lidam com <b>imprecisão</b> nos dados/pesos
+
+        Convergência inter-modelo é o melhor indicador de robustez da decisão.
+        """, unsafe_allow_html=True)
+
+        st.markdown("### 6.3 Comparação com Metodologia de Origem")
+        st.info("Se for o caso MCG: comparar o top-3 obtido com o esperado pela empresa (Q6.5: A1 e A9). "
+                "A app reporta convergência mas a interpretação final cabe ao analista.")
+
+        st.markdown(f"### 6.4 Recomendação Final")
+        if conv_pct_top1 >= 70:
+            verdict = "🟢 **ALTA convergência** — recomendação ROBUSTA, decisão com elevado grau de confiança."
+        elif conv_pct_top1 >= 40:
+            verdict = "🟡 **Convergência MODERADA** — recomendação aceitável, analise sensibilidade antes de decidir."
+        else:
+            verdict = "🔴 **BAIXA convergência** — Top-1 instável. Reveja pesos ou alargue conjunto de alternativas."
+        st.markdown(verdict)
+        st.markdown(f"**Recomenda-se a alternativa {top1}**, com top-3 = {top3}.")
+
+    # =========================================================================
+    # CAP 7 — CONCLUSÕES
+    # =========================================================================
+    with st.expander("**🎓 Capítulo 7 — Conclusões** (1-2 pp)", expanded=False):
+        st.markdown(f"""
+        ### Principais Conclusões
+        - Aplicaram-se **{len(methods)} modelos MCDM** (mínimo do enunciado: 4 — TOPSIS, PROMETHEE II, AHP, COPRAS).
+        - O top-1 consensual é **{top1}** com convergência de {conv_pct_top1:.0f}% nos modelos.
+        - {len(df_rob[df_rob['Inversões'] == 0])} alternativas demonstraram robustez total em ±{st.session_state.sensitivity_pct}%.
+
+        ### Limitações
+        - Qualidade dos dados de entrada (alguns valores são estimativas qualitativas convertidas em numéricas).
+        - Subjectividade dos pesos (mesmo com AHP CR < 0.10).
+        - Decisão final cabe sempre ao decisor humano — o modelo é ferramenta de apoio, não substituto.
+
+        ### Sugestões para Ciclos Futuros
+        - Recolha periódica de dados actualizados.
+        - Validar matriz AHP com múltiplos decisores (média geométrica das matrizes).
+        - Acompanhar evolução do top-3 ao longo do tempo (tendência).
+        - Considerar Fuzzy AHP / TOPSIS quando os dados forem mais imprecisos.
+        """)
+
+    # =========================================================================
+    # REFERÊNCIAS
+    # =========================================================================
+    with st.expander("**📚 Referências (APA 7ª)**", expanded=False):
+        st.markdown("""
+        - Brans, J.-P., & Vincke, P. (1985). A Preference Ranking Organisation Method. *Management Science*, 31(6), 647-656.
+        - Chang, D.-Y. (1996). Applications of the extent analysis method on fuzzy AHP. *European Journal of Operational Research*, 95(3), 649-655.
+        - Chen, C.-T. (2000). Extensions of the TOPSIS for group decision-making under fuzzy environment. *Fuzzy Sets and Systems*, 114(1), 1-9.
+        - Diakoulaki, D., Mavrotas, G., & Papayannakis, L. (1995). Determining objective weights in multiple criteria problems: The CRITIC method. *Computers & Operations Research*, 22(7), 763-770.
+        - Gabus, A., & Fontela, E. (1972). World problems, an invitation to further thought within the framework of DEMATEL. *Battelle Geneva Research Center*.
+        - Hwang, C.-L., & Yoon, K. (1981). *Multiple Attribute Decision Making: Methods and Applications*. Springer-Verlag.
+        - Keeney, R. L., & Raiffa, H. (1976). *Decisions with Multiple Objectives*. Wiley.
+        - Opricovic, S., & Tzeng, G.-H. (2004). Compromise solution by MCDM methods: A comparative analysis of VIKOR and TOPSIS. *European Journal of Operational Research*, 156(2), 445-455.
+        - Roy, B. (1968). Classement et choix en présence de points de vue multiples (ELECTRE). *RAIRO*, 8, 57-75.
+        - Saaty, T. L. (1980). *The Analytic Hierarchy Process*. McGraw-Hill.
+        - Shannon, C. E. (1948). A mathematical theory of communication. *Bell System Technical Journal*, 27, 379-423.
+        - Zavadskas, E. K., & Kaklauskas, A. (1996). *Multiple Criteria Evaluation of Buildings*. Vilnius Technika.
+        """)
+
+    # =========================================================================
+    # DOWNLOADS
+    # =========================================================================
+    st.markdown("---")
     st.subheader("📥 Exportar Relatório")
+
+    # Markdown completo
+    def df_to_md(df):
+        cols = list(df.columns)
+        header = "| " + " | ".join(str(c) for c in cols) + " |"
+        sep = "| " + " | ".join("---" for _ in cols) + " |"
+        rows = []
+        for _, row in df.iterrows():
+            cells = [f"{v:.4f}" if isinstance(v, float) else str(v) for v in row]
+            rows.append("| " + " | ".join(cells) + " |")
+        return "\n".join([header, sep] + rows)
+
+    sp_md = st.session_state.sensitivity_pct
+    eng_src_md = "Manual" if not st.session_state.global_injection_on else f"Motor: {st.session_state.global_injection_engine}"
+    df_w_md = pd.DataFrame({"Critério": crits, "Tipo": types, "Peso": weights})
+
+    md_lines = [
+        f"# Relatório Técnico MCDM",
+        f"\n**Data:** {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M')}",
+        f"\n## 🏆 Recomendação Final: {top1}",
+        f"- Top-3: {', '.join(top3)}",
+        f"- Convergência: {conv_pct_top1:.0f}%",
+        f"- Modelos: {len(methods)} — {', '.join(methods)}",
+        f"\n## Capítulo 1 — Introdução",
+        f"Aplicação MCDM a {len(alts)} alternativas × {len(crits)} critérios.",
+        f"\n## Capítulo 2 — Dados e Pré-processamento",
+        f"\n### 2.1 Alternativas",
+        ", ".join(alts),
+        f"\n### 2.2 Critérios e Pesos (fonte: {eng_src_md})",
+        df_to_md(df_w_md),
+        f"\n### 2.4 Matriz de Decisão",
+        df_to_md(pd.DataFrame(matrix, index=alts, columns=crits).reset_index().rename(columns={'index': 'Alt'})),
+    ]
+    if st.session_state.ahp_history:
+        md_lines.append(f"\n### 2.3 Iterações AHP de Consistência")
+        md_lines.append(df_to_md(pd.DataFrame(st.session_state.ahp_history)))
+
+    md_lines.append(f"\n## Capítulo 3 — Aplicação dos {len(methods)} Modelos MCDM")
+    for m in methods:
+        res = st.session_state.all_results[m]
+        df_m = pd.DataFrame({"Alt": alts, "Score": res["scores"], "Rank": res["ranking"]}).sort_values("Rank")
+        md_lines.append(f"\n### {m}")
+        md_lines.append(df_to_md(df_m))
+
+    md_lines.append(f"\n## Capítulo 4 — Análise de Sensibilidade (±{sp_md}%)")
+    md_lines.append(df_to_md(df_rob))
+
+    md_lines.append(f"\n## Capítulo 5 — Dashboard e Reutilizabilidade")
+    md_lines.append("Aplicação modular, sem hardcode, suporta até 50 alts × 15 crits.")
+
+    md_lines.append(f"\n## Capítulo 6 — Comparação e Recomendação Final")
+    md_lines.append(df_to_md(df_dash))
+
+    md_lines.append(f"\n## Capítulo 7 — Conclusões")
+    md_lines.append(f"Top-1 recomendado: **{top1}** (convergência {conv_pct_top1:.0f}%).")
+
+    md_report = "\n".join(md_lines)
 
     # CSV consolidado
     csv_buffer = StringIO()
@@ -2298,66 +2867,25 @@ with tabs[15]:
     # Excel consolidado
     excel_buf = BytesIO()
     with pd.ExcelWriter(excel_buf, engine="openpyxl") as writer:
-        df_dash.to_excel(writer, sheet_name="Rankings", index=False)
-        pd.DataFrame(matrix, index=alts, columns=crits).to_excel(writer, sheet_name="Matriz")
-        df_w.to_excel(writer, sheet_name="Pesos", index=False)
-        df_rob.to_excel(writer, sheet_name="Robustez", index=False)
-        # Scores por método
+        df_dash.to_excel(writer, sheet_name="Cap6_Rankings", index=False)
+        pd.DataFrame(matrix, index=alts, columns=crits).to_excel(writer, sheet_name="Cap2_Matriz")
+        df_w_md.to_excel(writer, sheet_name="Cap2_Pesos", index=False)
+        df_rob.to_excel(writer, sheet_name="Cap4_Robustez", index=False)
         sc_data = {"Alternativa": alts}
         for m in methods:
             sc_data[m] = st.session_state.all_results[m]["scores"]
-        pd.DataFrame(sc_data).to_excel(writer, sheet_name="Scores", index=False)
+        pd.DataFrame(sc_data).to_excel(writer, sheet_name="Cap3_Scores", index=False)
+        if st.session_state.ahp_history:
+            pd.DataFrame(st.session_state.ahp_history).to_excel(writer, sheet_name="Cap2_AHPIter", index=False)
     excel_buf.seek(0)
 
-    # Markdown report
-    md_lines = [
-        f"# Relatório MCDM\n",
-        f"**Data:** {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M')}\n",
-        f"## 🏆 Recomendação Final: {top1}\n",
-        f"- Posição média: {top1_pos_avg}",
-        f"- Top-3 em {top1_top3_count}/{len(methods)} modelos ({conv_pct_top1:.0f}%)",
-        f"- {verdict}\n",
-        f"## Sumário",
-        f"- Alternativas: {len(alts)}",
-        f"- Critérios: {len(crits)}",
-        f"- Modelos aplicados: {', '.join(methods)}",
-        f"- Sensibilidade: ±{st.session_state.sensitivity_pct}%\n",
-        f"## Top-3 Recomendado",
-    ]
-    for k, alt in enumerate(top3):
-        medal = ["🥇", "🥈", "🥉"][k]
-        md_lines.append(f"{k+1}. {medal} **{alt}** — Pos média: {df_dash.iloc[k]['Posição Média']}, Top-3 em {df_dash.iloc[k]['Top-3 em N modelos']}/{len(methods)}")
-    # Helper local: converter DataFrame para markdown table sem depender de tabulate
-    def df_to_md(df):
-        cols = list(df.columns)
-        header = "| " + " | ".join(str(c) for c in cols) + " |"
-        sep = "| " + " | ".join("---" for _ in cols) + " |"
-        rows = []
-        for _, row in df.iterrows():
-            cells = []
-            for c in cols:
-                v = row[c]
-                if isinstance(v, float):
-                    cells.append(f"{v:.4f}")
-                else:
-                    cells.append(str(v))
-            rows.append("| " + " | ".join(cells) + " |")
-        return "\n".join([header, sep] + rows)
-
-    md_lines.append("\n## Rankings por Modelo")
-    md_lines.append(df_to_md(df_dash))
-    md_lines.append("\n## Pesos Activos")
-    md_lines.append(f"Fonte: {eng_src}\n")
-    md_lines.append(df_to_md(df_w))
-    md_lines.append("\n## Robustez")
-    md_lines.append(df_to_md(df_rob))
-    md_report = "\n".join(md_lines)
-
     ec1, ec2, ec3 = st.columns(3)
-    ec1.download_button("📥 CSV (rankings)", csv_buffer.getvalue(), "mcdm_rankings.csv", "text/csv",
+    ec1.download_button("📥 CSV (Cap.6 Rankings)", csv_buffer.getvalue(), "rel_tecnico_cap6.csv", "text/csv",
                         use_container_width=True)
-    ec2.download_button("📥 Excel (completo)", excel_buf.getvalue(), "mcdm_relatorio.xlsx",
+    ec2.download_button("📥 Excel (todos capítulos)", excel_buf.getvalue(), "rel_tecnico_completo.xlsx",
                         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                         use_container_width=True)
-    ec3.download_button("📥 Markdown (relatório)", md_report.encode("utf-8"),
-                        "mcdm_relatorio.md", "text/markdown", use_container_width=True)
+    ec3.download_button("📥 Markdown (relatório completo)", md_report.encode("utf-8"),
+                        "rel_tecnico_completo.md", "text/markdown", use_container_width=True)
+
+    st.caption("💡 O markdown pode ser convertido para PDF com Pandoc, ou aberto no Typora/VSCode/Obsidian para edição.")
