@@ -196,6 +196,14 @@ def show_active_weights_banner():
 def theory_box(title, html):
     st.markdown(f'<div class="theory-box"><h4>📚 {title}</h4>{html}</div>', unsafe_allow_html=True)
 
+def purpose_box(text):
+    """Caixa verde 'Para que serve esta aba' — usar no topo de cada aba."""
+    st.markdown(
+        f'<div style="background:#e8f5e9; padding:10px 16px; border-left:4px solid #2e7d32; '
+        f'border-radius:4px; margin-bottom:16px;"><b>📌 Para que serve esta aba:</b> {text}</div>',
+        unsafe_allow_html=True
+    )
+
 def step_header(text):
     st.markdown(f'<div class="step-header">{text}</div>', unsafe_allow_html=True)
 
@@ -398,33 +406,73 @@ with st.sidebar:
             st.rerun()
 
         st.markdown("**Opção B — Colar do Excel:**")
-        st.caption("Cole valores separados por TAB (copy directo do Excel). Primeira linha = nomes dos critérios. Primeira coluna = nomes das alternativas.")
+        st.caption(
+            "1) No Excel, seleccione células incluindo cabeçalhos · 2) Ctrl+C · 3) Clique aqui · 4) Ctrl+V.\n\n"
+            "A 1ª coluna deve ter os nomes das alternativas e a 1ª linha os nomes dos critérios. "
+            "Aceita separação por TAB (Excel) ou ; e decimais com `,` ou `.`"
+        )
         paste_text = st.text_area(
             "Colar aqui (Ctrl+V):",
-            height=140,
-            placeholder="Alternativa\tC1\tC2\tC3\nAlt 1\t8\t1200\t15\nAlt 2\t6\t1500\t20\n...",
+            height=160,
+            placeholder="Alternativa\tCusto\tQualidade\tPrazo\nForn A\t1200\t8\t15\nForn B\t1500\t6\t20",
             key="paste_area"
         )
-        if st.button("📋 Processar dados colados", use_container_width=True):
+
+        # PREVIEW automático conforme se cola
+        if paste_text and paste_text.strip():
+            # Detecção automática de separador
+            sep_guess = "\t"
+            first_line = paste_text.strip().split("\n")[0]
+            if "\t" in first_line:
+                sep_guess = "\t"
+            elif ";" in first_line:
+                sep_guess = ";"
+            elif "," in first_line and first_line.count(",") > 1:
+                sep_guess = ","
+            else:
+                # Várias espaços consecutivos
+                sep_guess = r"\s{2,}"
+
             try:
-                df = pd.read_csv(StringIO(paste_text), sep="\t")
-                first_col = df.columns[0]
-                crits = list(df.columns[1:])
-                df = df.rename(columns={first_col: "Alternativa"})
-                new_crits = pd.DataFrame({
-                    "Critério": crits,
-                    "Tipo": ["max"] * len(crits),
-                    "Peso Manual": [1.0 / len(crits)] * len(crits),
-                })
-                for c in crits:
-                    df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0)
-                st.session_state.criteria_df = new_crits
-                st.session_state.matrix_df = df
-                st.session_state.engine_weights = {}
-                st.success(f"✓ Carregado: {len(df)} alts × {len(crits)} crits")
-                st.rerun()
+                if sep_guess == r"\s{2,}":
+                    df_preview = pd.read_csv(StringIO(paste_text), sep=sep_guess, engine="python", dtype=str)
+                else:
+                    df_preview = pd.read_csv(StringIO(paste_text), sep=sep_guess, dtype=str)
+
+                # Converter decimais com vírgula para ponto E DEPOIS para numérico
+                for c in df_preview.columns[1:]:
+                    df_preview[c] = (df_preview[c].astype(str)
+                                                  .str.replace(",", ".", regex=False)
+                                                  .str.strip())
+                    df_preview[c] = pd.to_numeric(df_preview[c], errors="coerce").fillna(0)
+
+                first_col = df_preview.columns[0]
+                df_preview = df_preview.rename(columns={first_col: "Alternativa"})
+
+                st.caption(f"✓ Detectado: separador `{sep_guess}` · {len(df_preview)} alts × {len(df_preview.columns)-1} crits")
+                st.dataframe(df_preview, hide_index=True, use_container_width=True)
+
+                if st.button("📋 Confirmar e carregar", use_container_width=True, type="primary"):
+                    crits_list = list(df_preview.columns[1:])
+                    new_crits = pd.DataFrame({
+                        "Critério": crits_list,
+                        "Tipo": ["max"] * len(crits_list),
+                        "Peso Manual": [1.0 / len(crits_list)] * len(crits_list),
+                    })
+                    st.session_state.criteria_df = new_crits
+                    st.session_state.matrix_df = df_preview
+                    st.session_state.engine_weights = {}
+                    st.success(f"✓ Carregado: {len(df_preview)} alts × {len(crits_list)} crits")
+                    st.rerun()
             except Exception as e:
-                st.error(f"❌ Erro ao processar: {e}\n\nVerifique que o texto está separado por TAB.")
+                st.error(
+                    f"❌ Erro a ler dados: {e}\n\n"
+                    "**Verifique:**\n"
+                    "• 1ª linha tem cabeçalhos (nomes dos critérios)\n"
+                    "• 1ª coluna tem nomes das alternativas\n"
+                    "• Valores são numéricos (decimais com `,` ou `.`)\n"
+                    "• Separador é TAB (do Excel), `;` ou espaços"
+                )
 
     else:  # Carregar Excel
         uploaded = st.file_uploader(
@@ -546,6 +594,7 @@ with st.sidebar:
 # TABS
 # =============================================================================
 TAB_LABELS = [
+    "🏠 Início",
     "📋 Dados",
     "⚖️ Motores de Pesos",
     "🔍 AHP",
@@ -566,10 +615,122 @@ tabs = st.tabs(TAB_LABELS)
 
 
 # =============================================================================
-# TAB 1: DADOS
+# TAB 0: INÍCIO — Como funciona a aplicação
 # =============================================================================
 with tabs[0]:
+    st.header("🏠 Bem-vindo ao MCDM Dashboard")
+    st.markdown(
+        """
+        Esta aplicação ajuda a tomar **decisões multicritério** comparando alternativas
+        (fornecedores, projectos, investimentos, etc.) segundo vários critérios (custo,
+        qualidade, prazo, risco, etc.) — usando **9 modelos científicos** consagrados.
+        """
+    )
+
+    st.markdown("---")
+    st.subheader("🚀 Como começar em 4 passos")
+
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        st.markdown("### 1️⃣ Dados")
+        st.markdown(
+            "Na **barra lateral** escolha como fornece os dados:\n\n"
+            "• **Demo**: 3 casos pré-carregados\n\n"
+            "• **Manual**: define N alts × N crits OU cola do Excel\n\n"
+            "• **Excel**: upload de `.xlsx`"
+        )
+    with c2:
+        st.markdown("### 2️⃣ Pesos")
+        st.markdown(
+            "Defina a importância de cada critério:\n\n"
+            "• **Manual**: edita pesos na sidebar\n\n"
+            "• **Motor** (aba ⚖️): SWING, SMART, Entropia, CRITIC\n\n"
+            "• **AHP** (aba 🔍): comparação par-a-par"
+        )
+    with c3:
+        st.markdown("### 3️⃣ Modelos")
+        st.markdown(
+            "Veja resultados em cada aba:\n\n"
+            "• TOPSIS, PROMETHEE II, VIKOR, COPRAS, ELECTRE III, MAUT, DEMATEL, "
+            "Fuzzy TOPSIS, Fuzzy AHP\n\n"
+            "Cada um dá um ranking + análise de sensibilidade"
+        )
+    with c4:
+        st.markdown("### 4️⃣ Decisão")
+        st.markdown(
+            "Consolide e decida:\n\n"
+            "• **📊 Gráficos**: visualizações decisivas\n\n"
+            "• **🏆 Dashboard**: consenso entre modelos\n\n"
+            "• **📄 Relatório**: descarregar resultado final"
+        )
+
+    st.markdown("---")
+    st.subheader("📑 O que faz cada aba")
+
+    tab_descriptions = [
+        ("📋 Dados", "Mostra a matriz de decisão actual (alternativas × critérios) e os pesos activos. "
+                     "Heatmap visual normalizado para inspecção rápida."),
+        ("⚖️ Motores de Pesos", "Calcula pesos automaticamente por **4 métodos**: SWING (swing pior→melhor), "
+                                 "SMART (pontuação 0-100), Entropia (variabilidade dos dados), CRITIC (variância + correlações). "
+                                 "Active a injecção global na sidebar para os modelos usarem estes pesos."),
+        ("🔍 AHP", "Comparação par-a-par escala Saaty 1-9. Calcula pesos via autovector e valida com CR < 0.10. "
+                   "Se CR ≥ 0.10 → **app sugere correcção iterativa** do par mais inconsistente."),
+        ("🎯 TOPSIS", "Hwang & Yoon (1981). Mede distância à solução ideal e anti-ideal. Compensatório, baseado em distâncias."),
+        ("📈 PROMETHEE II", "Brans (1985). Fluxos de preferência par-a-par com 3 funções (Usual, Linear, Gaussiana). Não-compensatório."),
+        ("⚖️ VIKOR", "Opricovic & Tzeng (2004). Solução de compromisso (utilidade global S + arrependimento R)."),
+        ("📊 COPRAS", "Zavadskas & Kaklauskas (1996). Função proporcional benefícios/custos com grau de utilidade U_i (%)."),
+        ("🚫 ELECTRE III", "Roy (1968+). Sobreclassificação com limiares q/p/v (indiferença, preferência, veto)."),
+        ("💡 MAUT", "Keeney & Raiffa (1976). Utilidade aditiva com 4 funções (Linear, Exp, Potência 0.5, Potência 2)."),
+        ("🌐 DEMATEL", "Gabus & Fontela (1972). Relações causa-efeito entre critérios + ranking ajustado."),
+        ("🌫️ Fuzzy TOPSIS", "Chen (2000). TOPSIS com números fuzzy triangulares para lidar com imprecisão."),
+        ("🧮 Fuzzy AHP", "Chang (1996). AHP com pesos fuzzy + defuzzificação centro de área."),
+        ("📊 Gráficos", "**5 visualizações decisivas**: heatmap rankings, radar Top-3, tornado sensibilidade, "
+                        "scores normalizados, convergência Top-3."),
+        ("🏆 Dashboard", "Consolida os rankings de todos os modelos via Borda invertido. Top-3 consensual."),
+        ("📄 Relatório", "Recomendação final + sumário executivo. Downloads em **CSV, Excel (5 folhas) e Markdown**."),
+    ]
+
+    for label, desc in tab_descriptions:
+        st.markdown(f"**{label}** — {desc}")
+
+    st.markdown("---")
+    st.subheader("🎯 Conceitos-chave")
+
+    cc1, cc2 = st.columns(2)
+    with cc1:
+        st.markdown("""
+        **🔌 Injecção Global de Pesos**
+        Toggle na sidebar. Quando **ON**, todos os modelos usam os pesos calculados pelo motor
+        escolhido (AHP, SWING, etc.). Quando **OFF**, usam o "Peso Manual" definido no editor
+        de critérios da sidebar.
+
+        **⚖️ Tipo de critério**
+        - **max** (benefício): quanto maior, melhor (qualidade, retorno)
+        - **min** (custo): quanto menor, melhor (custo, prazo, risco)
+        """)
+    with cc2:
+        st.markdown("""
+        **🎯 Análise de Sensibilidade**
+        Variamos cada peso isoladamente em ±X% (slider na sidebar) e renormalizamos os outros
+        para Σ=1. Para cada cenário recalculamos o ranking. Cores:
+        - 🟢 alternativa **sobe** no ranking
+        - 🔴 alternativa **desce** no ranking
+        - ⚪ alternativa **inalterada**
+
+        **🏆 Convergência inter-modelo**
+        Quantos modelos colocam a mesma alternativa no Top-3 = robustez consensual.
+        """)
+
+    st.markdown("---")
+    st.info("💡 **Dica:** comece sempre pelos casos **Demo** para ver a app a funcionar antes de carregar os seus dados.")
+
+
+# =============================================================================
+# TAB 1: DADOS
+# =============================================================================
+with tabs[1]:
     st.header("📋 Dados de Entrada")
+    purpose_box("Visualizar a <b>matriz de decisão</b> actual (alternativas × critérios) e os pesos activos. Mostra estatísticas e heatmap normalizado.")
     theory_box(
         "Como começar",
         """
@@ -618,22 +779,29 @@ with tabs[0]:
 # =============================================================================
 # TAB 2: MOTORES DE PESOS (SEM AHP — está na aba dedicada)
 # =============================================================================
-with tabs[1]:
+with tabs[2]:
     st.header("⚖️ Motores de Pesos")
+    st.markdown(
+        '<div style="background:#e8f5e9; padding:10px 16px; border-left:4px solid #2e7d32; '
+        'border-radius:4px; margin-bottom:16px;">'
+        '<b>📌 Para que serve esta aba:</b> Calcular automaticamente os <b>pesos dos critérios</b> '
+        'em vez de os definir manualmente. Útil quando não sabe que peso atribuir ou quer um método objectivo. '
+        '<br><br><b>Workflow:</b> (1) escolher motor abaixo · (2) preencher inputs específicos · '
+        '(3) ver pesos calculados · (4) na sidebar activar <b>"🔌 Injecção Global"</b> e escolher este motor '
+        'para os modelos MCDM passarem a usar estes pesos.'
+        '</div>',
+        unsafe_allow_html=True
+    )
     theory_box(
-        "4 métodos para calcular pesos automaticamente",
+        "4 métodos disponíveis (AHP está em aba dedicada)",
         """
-        <p>Em vez de definir pesos manualmente, pode calculá-los matematicamente:</p>
         <ul>
-            <li><b>SWING</b>: swing pior→melhor → 100 pontos no mais impactante → pontuações relativas → normalização</li>
-            <li><b>SMART</b>: pontuação directa 0-100 (simplificação do SWING)</li>
-            <li><b>Entropia de Shannon</b>: pesos pela variabilidade dos dados (objectivo, baseado na matriz)</li>
-            <li><b>CRITIC</b>: combina variância + correlações (objectivo, considera dependências)</li>
+            <li><b>SWING</b> (subjectivo): você define <i>quão impactante é o swing pior→melhor</i> em cada critério (0-100). Pesos = scores/Σscores.</li>
+            <li><b>SMART</b> (subjectivo): você classifica cada critério em 0-100 de importância. Mais simples que SWING.</li>
+            <li><b>Entropia de Shannon</b> (objectivo): cálculo automático a partir da matriz. Pesos = variabilidade dos dados.</li>
+            <li><b>CRITIC</b> (objectivo): cálculo automático. Pesos = variância × (1 − correlação) com outros critérios.</li>
         </ul>
-        <p><b>Nota:</b> o método <b>AHP</b> tem aba dedicada (mais à direita) por ser mais complexo
-        (matriz par-a-par + validação de consistência + iterações).</p>
-        <p><b>Injecção Global:</b> active o toggle na sidebar para forçar os modelos a usar
-        os pesos calculados aqui (ou na aba AHP).</p>
+        <p>Os métodos <b>subjectivos</b> precisam dos seus inputs (pontuações). Os <b>objectivos</b> calculam tudo sozinhos.</p>
         """
     )
 
@@ -653,15 +821,24 @@ with tabs[1]:
     if engine == "SWING":
         st.subheader("🎢 SWING Weighting")
         theory_box(
-            "Como funciona (von Winterfeldt & Edwards, 1986)",
+            "Como funciona (von Winterfeldt & Edwards, 1986) — método SUBJECTIVO",
             """
-            <p>Imagine que tem a alternativa onde <b>todos os critérios estão no pior nível</b>.
-            Para cada critério, defina:</p>
-            <ul>
-                <li><b>Nível pior</b> e <b>nível melhor</b> do critério (limites realistas do problema)</li>
-                <li><b>Pontuação SWING</b>: 100 ao mais impactante; relativos aos restantes</li>
-            </ul>
+            <p><b>Conceito:</b> imagine uma alternativa onde TODOS os critérios estão no nível PIOR.
+            Para cada critério, pergunta-se «qual é o benefício de fazer SWING desse pior nível
+            para o melhor?». O critério com swing mais impactante recebe 100 pontos; os outros recebem
+            pontuações relativas (0-100).</p>
+            <p><b>3 passos:</b></p>
+            <ol>
+                <li>Confirmar/ajustar os <b>níveis pior e melhor</b> de cada critério (a app auto-preenche pela matriz)</li>
+                <li>Atribuir <b>100 pontos</b> ao critério com swing mais impactante</li>
+                <li>Atribuir <b>0-100</b> pontos aos restantes, relativos ao de 100</li>
+            </ol>
             """
+        )
+        st.info(
+            "💡 **Como preencher:** Edite a coluna **'Swing Score (0-100)'**. "
+            "O critério mais importante = 100. Os outros, proporcionalmente. "
+            "Os pesos finais são calculados automaticamente abaixo."
         )
         st.latex(r"w_j = \frac{p_j}{\sum_k p_k},\quad p_j \in [0, 100]")
 
@@ -715,11 +892,17 @@ with tabs[1]:
     elif engine == "SMART":
         st.subheader("📐 SMART — Simple Multi-Attribute Rating Technique")
         theory_box(
-            "Como funciona (von Winterfeldt & Edwards, 1986)",
+            "Como funciona (von Winterfeldt & Edwards, 1986) — método SUBJECTIVO",
             """
-            <p>Simplificação directa do SWING: atribua <b>pontuação 0-100</b> a cada critério
-            conforme a importância. Não há comparação de "swings" — é classificação directa.</p>
+            <p><b>Conceito:</b> mais simples que SWING. Você classifica directamente <b>cada critério em 0-100</b>
+            conforme a sua importância para a decisão. Não há comparação de swings — é uma pontuação directa.</p>
+            <p><b>Convenção habitual:</b> critério MAIS importante = 100; critério MENOS importante ≈ 10.
+            Os pesos são pontuações ÷ soma das pontuações.</p>
             """
+        )
+        st.info(
+            "💡 **Como preencher:** edite a coluna **'Pontuação (0-100)'** dando 100 ao critério mais "
+            "importante e proporções aos restantes. Os pesos calculam-se automaticamente."
         )
         st.latex(r"w_j = \frac{p_j}{\sum_k p_k}")
 
@@ -755,13 +938,17 @@ with tabs[1]:
     elif engine == "Entropia":
         st.subheader("📊 Entropia de Shannon")
         theory_box(
-            "Como funciona (Shannon, 1948)",
+            "Como funciona (Shannon, 1948) — método OBJECTIVO (sem inputs do utilizador)",
             """
-            <p>Mede a <b>quantidade de informação</b> de cada critério via variabilidade.
-            Critérios com mais variabilidade nos dados → maior peso (mais informação para discriminar).</p>
-            <p><b>É 100% objectivo</b>: depende só da matriz, sem julgamentos.</p>
+            <p><b>Conceito:</b> mede a <b>quantidade de informação</b> de cada critério via variabilidade dos
+            dados na matriz. Critérios cuja coluna tem MUITA variabilidade (ex.: alts com 5, 80, 200) trazem
+            MUITA informação para discriminar → recebem PESO MAIOR.
+            Critérios com pouca variabilidade (ex.: alts todas com ~50) trazem pouca informação → peso menor.</p>
+            <p><b>Não há inputs do utilizador</b> — basta clicar nesta opção; pesos calculam-se automaticamente
+            pelos 3 passos abaixo.</p>
             """
         )
+        st.info("💡 **Como usar:** nada a preencher. Os pesos aparecem já calculados abaixo a partir da matriz.")
         st.markdown("**Passo 1 — Normalização (max → proporção; min → inverso)**")
         st.latex(r"x'_{ij} = \frac{x_{ij}}{\sum_i x_{ij}}\;\text{(max)};\quad x'_{ij} = \frac{1/x_{ij}}{\sum_i 1/x_{ij}}\;\text{(min)}")
 
@@ -805,17 +992,18 @@ with tabs[1]:
     else:  # CRITIC
         st.subheader("🔬 CRITIC")
         theory_box(
-            "Como funciona (Diakoulaki, 1995)",
+            "Como funciona (Diakoulaki, 1995) — método OBJECTIVO (sem inputs do utilizador)",
             """
-            <p>Combina dois efeitos:</p>
+            <p><b>Conceito:</b> combina duas ideias:</p>
             <ul>
-                <li><b>Contraste</b>: desvio-padrão σ (variabilidade)</li>
-                <li><b>Conflito</b>: correlação Pearson com outros critérios</li>
+                <li><b>Contraste</b>: critérios com mais variabilidade (σ alto) trazem mais informação</li>
+                <li><b>Conflito</b>: critérios pouco correlacionados com outros trazem informação <i>única</i> (não redundante)</li>
             </ul>
-            <p>Pesos maiores para critérios com alta variabilidade <b>e</b> baixa correlação com outros
-            (informação única, não redundante).</p>
+            <p>Recebem peso maior critérios com ALTA variabilidade <b>E</b> BAIXA correlação com outros.
+            <b>Sem inputs do utilizador</b> — basta clicar nesta opção.</p>
             """
         )
+        st.info("💡 **Como usar:** nada a preencher. Pesos calculam-se automaticamente pelos 3 passos abaixo.")
         st.markdown("**Passo 1 — Normalização min-max**")
         st.latex(r"r_{ij} \in [0,1] \text{ via min-max}")
         try:
@@ -883,8 +1071,9 @@ with tabs[1]:
 # =============================================================================
 # TAB 3: AHP (FULL — matriz Saaty + consistência + iterações)
 # =============================================================================
-with tabs[2]:
+with tabs[3]:
     st.header("🔍 AHP — Analytic Hierarchy Process (Saaty, 1980)")
+    purpose_box("Calcular pesos via <b>comparação par-a-par</b> escala Saaty 1-9. Valida com CR < 0.10. <b>Se CR ≥ 0.10, a app sugere iterativamente</b> que par corrigir até atingir consistência.")
 
     theory_box(
         "Teoria condensada",
@@ -942,8 +1131,20 @@ with tabs[2]:
                   .style.format({"Peso w_j": "{:.4f}"}),
                 hide_index=True, use_container_width=True)
 
-    step_header("Passo 3: Verificação de Consistência")
-    st.latex(r"\lambda_{max},\;CI = \frac{\lambda_{max}-n}{n-1},\;CR = CI/RI(n)")
+    step_header("Passo 3: Verificação de Consistência (Saaty)")
+    st.markdown(
+        """
+        **O que é o CR e porque é obrigatório?**
+        O Rácio de Consistência (CR) mede se os seus julgamentos par-a-par são **logicamente coerentes**.
+        Exemplo de incoerência: se disse «C1 é 5× mais importante que C2» e «C2 é 3× mais importante que C3»,
+        então logicamente C1 deveria ser ~15× mais importante que C3. Se inseriu outro valor (ex.: 2),
+        o CR sobe.
+
+        **Saaty define a regra:** se **CR ≥ 0.10** → os pesos NÃO são fiáveis e **precisa de iterar** (rever julgamentos).
+        Se **CR < 0.10** → matriz aceitável.
+        """
+    )
+    st.latex(r"\lambda_{max},\;CI = \frac{\lambda_{max}-n}{n-1},\;CR = \frac{CI}{RI(n)}")
     Aw = A @ w_ahp
     lam_max = (Aw / np.where(w_ahp == 0, 1e-9, w_ahp)).mean()
     CI = (lam_max - n) / (n - 1) if n > 1 else 0
@@ -961,15 +1162,30 @@ with tabs[2]:
     # =========== ITERAÇÃO PARA REDUZIR CR ===========
     if CR >= 0.10:
         st.markdown(
-            f'<div class="warning-box"><b>⚠️ CR = {CR:.4f} ≥ 0.10 — INCONSISTENTE.</b><br>'
-            'A teoria de Saaty exige <b>CR < 0.10</b>. Reveja os julgamentos par-a-par. '
-            'A app calcula abaixo o par <b>mais problemático</b> e sugere o valor que reduz CR.</div>',
+            f'<div class="warning-box">'
+            f'<b>⚠️ CR = {CR:.4f} ≥ 0.10 — Matriz INCONSISTENTE.</b><br><br>'
+            'Conforme exige a teoria, é preciso <b>iterar</b>: rever julgamentos par-a-par até CR < 0.10. '
+            'A aplicação identifica automaticamente <b>onde está o pior conflito</b> e propõe uma correcção.'
+            '</div>',
             unsafe_allow_html=True
         )
 
-        # Encontrar o par mais inconsistente: maior |log(a_ij) - log(w_i/w_j)|
+        st.markdown("#### 🔬 Como a aplicação detecta o par mais problemático")
+        st.markdown(
+            r"""
+            Para cada par (i, j) na matriz comparamos o valor que você inseriu (**observado**, a<sub>ij</sub>)
+            com o valor que seria **logicamente esperado** dados os pesos calculados (**esperado**, w<sub>i</sub>/w<sub>j</sub>).
+            O par com maior desvio é o "ponto fraco" da matriz:
+            """, unsafe_allow_html=True
+        )
+        st.latex(r"\text{desvio}(i, j) = \left| \ln\left(\frac{a_{ij}^{\text{observado}}}{w_i / w_j}\right) \right|")
+        st.markdown("O valor sugerido é o **da escala Saaty {1/9, 1/7, 1/5, 1/3, 1/2, 1, 2, 3, 5, 7, 9}** mais próximo de w<sub>i</sub>/w<sub>j</sub>.",
+                    unsafe_allow_html=True)
+
+        # Encontrar o par mais inconsistente
         worst_i, worst_j, worst_dev = -1, -1, 0
         suggested_value = 1.0
+        ideal_value = 1.0
         for i in range(n):
             for j in range(i+1, n):
                 if w_ahp[j] != 0:
@@ -980,32 +1196,47 @@ with tabs[2]:
                         if dev > worst_dev:
                             worst_dev = dev
                             worst_i, worst_j = i, j
-                            # Sugerir valor que aproxima o ideal — arredondar para escala Saaty
-                            ideal = expected
+                            ideal_value = expected
                             saaty_scale = [1/9, 1/7, 1/5, 1/3, 1/2, 1, 2, 3, 5, 7, 9]
-                            suggested_value = min(saaty_scale, key=lambda x: abs(np.log(x) - np.log(ideal)))
+                            suggested_value = min(saaty_scale, key=lambda x: abs(np.log(x) - np.log(ideal_value)))
 
         if worst_i >= 0:
-            st.markdown(f"### 🔧 Sugestão de Iteração")
-            colA, colB, colC = st.columns(3)
+            st.markdown("#### 🔧 Sugestão de Iteração")
+            colA, colB, colC, colD = st.columns(4)
             colA.metric("Par problemático", f"{crits[worst_i]} vs {crits[worst_j]}")
-            colB.metric("Valor actual", f"{A[worst_i, worst_j]:.2f}")
-            colC.metric("Valor sugerido (Saaty)", f"{suggested_value:.4f}",
-                       delta=f"Δ = {suggested_value - A[worst_i, worst_j]:+.2f}")
+            colB.metric("Valor actual (observado)", f"{A[worst_i, worst_j]:.4f}")
+            colC.metric("Valor ideal teórico", f"{ideal_value:.4f}",
+                       help="w_i / w_j — o que seria logicamente coerente")
+            colD.metric("Valor sugerido (Saaty)", f"{suggested_value:.4f}",
+                       delta=f"Δ = {suggested_value - A[worst_i, worst_j]:+.2f}",
+                       help="Valor mais próximo na escala Saaty 1-9 que reduz CR")
 
-            if st.button(f"✏️ Aplicar sugestão ({crits[worst_i]} vs {crits[worst_j]} → {suggested_value:.2f})",
-                        type="primary"):
-                new_df = st.session_state[ahp_key].copy()
-                new_df.iloc[worst_i, worst_j] = suggested_value
-                new_df.iloc[worst_j, worst_i] = 1.0 / suggested_value
-                st.session_state[ahp_key] = new_df
-                st.session_state.ahp_history.append({
-                    "iteration": len(st.session_state.ahp_history) + 1,
-                    "CR_before": CR, "pair": f"{crits[worst_i]} vs {crits[worst_j]}",
-                    "old_value": A[worst_i, worst_j], "new_value": suggested_value
-                })
-                st.success("✓ Sugestão aplicada. Recarregue a aba para ver novo CR.")
-                st.rerun()
+            colE, colF = st.columns([3, 1])
+            with colE:
+                st.info(
+                    f"**Interpretação:** disse que {crits[worst_i]} vale **{A[worst_i, worst_j]:.2f}×** "
+                    f"{crits[worst_j]}, mas os pesos calculados sugerem que o rácio deveria ser ~**{ideal_value:.2f}×**. "
+                    f"Para aproximar, ajuste para **{suggested_value:.2f}** (escala Saaty mais próxima)."
+                )
+            with colF:
+                if st.button(f"✏️ Aplicar sugestão", type="primary", use_container_width=True):
+                    new_df = st.session_state[ahp_key].copy()
+                    new_df.iloc[worst_i, worst_j] = suggested_value
+                    new_df.iloc[worst_j, worst_i] = 1.0 / suggested_value
+                    st.session_state[ahp_key] = new_df
+                    st.session_state.ahp_history.append({
+                        "iteração": len(st.session_state.ahp_history) + 1,
+                        "CR antes": round(CR, 4), "par": f"{crits[worst_i]} vs {crits[worst_j]}",
+                        "valor antigo": round(A[worst_i, worst_j], 4),
+                        "valor novo": round(suggested_value, 4)
+                    })
+                    st.success("✓ Sugestão aplicada. A matriz acima foi actualizada — o novo CR aparece já.")
+                    st.rerun()
+
+            st.caption(
+                "**Pode iterar várias vezes** clicando em 'Aplicar sugestão' até CR < 0.10. "
+                "Em alternativa, edite manualmente a matriz acima."
+            )
     else:
         st.markdown(
             f'<div class="result-box">✅ <b>Matriz CONSISTENTE</b> — CR = {CR:.4f} < 0.10. Pesos AHP válidos.</div>',
@@ -1055,8 +1286,9 @@ with tabs[2]:
 # =============================================================================
 # TAB 4: TOPSIS
 # =============================================================================
-with tabs[3]:
+with tabs[4]:
     st.header("🎯 TOPSIS")
+    purpose_box("Aplicar o método TOPSIS — mede a <b>distância à solução ideal</b> e ranqueia as alternativas. Mostra os 6 passos com fórmulas e a análise de sensibilidade ±X%.")
     theory_box("Teoria (Hwang & Yoon, 1981)",
         """<p>Método compensatório baseado em <b>distâncias</b> à solução ideal A⁺ e anti-ideal A⁻.
         A melhor alternativa é simultaneamente <b>mais próxima de A⁺ e mais afastada de A⁻</b>.</p>""")
@@ -1106,8 +1338,9 @@ with tabs[3]:
 # =============================================================================
 # TAB 5: PROMETHEE II
 # =============================================================================
-with tabs[4]:
+with tabs[5]:
     st.header("📈 PROMETHEE II")
+    purpose_box("Aplicar PROMETHEE II — método de <b>fluxos de preferência par-a-par</b>. Permite 3 funções de preferência (Usual, Linear, Gaussiana).")
     theory_box("Teoria (Brans, 1985)",
         """<p>Método <b>não-compensatório</b> baseado em fluxos de preferência par-a-par.
         Para cada par (a, b), agrega preferências em φ(a) = φ⁺(a) − φ⁻(a) ∈ [-1, 1].</p>
@@ -1174,8 +1407,9 @@ with tabs[4]:
 # =============================================================================
 # TAB 6: VIKOR
 # =============================================================================
-with tabs[5]:
+with tabs[6]:
     st.header("⚖️ VIKOR")
+    purpose_box("Aplicar VIKOR — encontra a <b>solução de compromisso</b> entre utilidade global (S) e arrependimento individual (R). Parâmetro v ajustável.")
     theory_box("Teoria (Opricovic & Tzeng, 2004)",
         """<p>Procura <b>solução de compromisso</b> entre utilidade global (S) e arrependimento individual (R).
         Q_i combina ambos via v ∈ [0,1]; menor Q = melhor.</p>""")
@@ -1238,8 +1472,9 @@ with tabs[5]:
 # =============================================================================
 # TAB 7: COPRAS
 # =============================================================================
-with tabs[6]:
+with tabs[7]:
     st.header("📊 COPRAS")
+    purpose_box("Aplicar COPRAS — avalia alternativas como <b>função proporcional</b> entre benefícios (S⁺) e custos (S⁻). Resultado em grau de utilidade U_i (%).")
     theory_box("Teoria (Zavadskas & Kaklauskas, 1996)",
         """<p>Avalia alternativas como função proporcional entre <b>benefícios (S⁺)</b> e <b>custos (S⁻)</b>.
         Resultado: índice Q_i e grau de utilidade U_i (%) onde 100% = óptimo absoluto.</p>""")
@@ -1295,8 +1530,9 @@ with tabs[6]:
 # =============================================================================
 # TAB 8: ELECTRE III
 # =============================================================================
-with tabs[7]:
+with tabs[8]:
     st.header("🚫 ELECTRE III")
+    purpose_box("Aplicar ELECTRE III — método de <b>sobreclassificação</b> com limiares q/p/v (indiferença, preferência, veto). Permite incomparabilidades.")
     theory_box("Teoria (Roy, 1968+)",
         """<p>Método de <b>sobreclassificação</b>. Para cada par (a, b), avalia se há
         evidência suficiente que a "supera" b, usando 3 limiares: <b>q</b> (indiferença), <b>p</b> (preferência),
@@ -1385,8 +1621,9 @@ with tabs[7]:
 # =============================================================================
 # TAB 9: MAUT
 # =============================================================================
-with tabs[8]:
+with tabs[9]:
     st.header("💡 MAUT")
+    purpose_box("Aplicar MAUT — converte valores em <b>utilidade [0,1]</b> via função (Linear, Exp, Potência) e agrega ponderadamente.")
     theory_box("Teoria (Keeney & Raiffa, 1976)",
         """<p>Cada valor é convertido em <b>utilidade</b> u_j(x) ∈ [0,1] via função (linear, exponencial, potência),
         e agregado: U_i = Σ w_j · u_j(x_ij). Maior U = melhor.</p>""")
@@ -1433,8 +1670,9 @@ with tabs[8]:
 # =============================================================================
 # TAB 10: DEMATEL
 # =============================================================================
-with tabs[9]:
+with tabs[10]:
     st.header("🌐 DEMATEL")
+    purpose_box("Aplicar DEMATEL — analisa <b>relações causa-efeito</b> entre critérios e ajusta pesos pela proeminência.")
     theory_box("Teoria (Gabus & Fontela, 1972)",
         """<p>Modela <b>relações causa-efeito</b> entre critérios. Aqui, na ausência de elicitação directa,
         usa-se correlação absoluta como proxy. Output: R+C (proeminência) e R−C (causa/efeito).</p>""")
@@ -1496,8 +1734,9 @@ with tabs[9]:
 # =============================================================================
 # TAB 11: FUZZY TOPSIS
 # =============================================================================
-with tabs[10]:
+with tabs[11]:
     st.header("🌫️ Fuzzy TOPSIS")
+    purpose_box("TOPSIS com <b>números fuzzy triangulares</b> (l, m, u). Útil quando os dados têm imprecisão. Spread ajustável.")
     theory_box("Teoria (Chen, 2000)",
         """<p>TOPSIS com <b>números fuzzy triangulares</b> (l, m, u). Captura imprecisão.
         Distância pelo método do vértice; CC_i mantém-se como ranking.</p>""")
@@ -1557,8 +1796,9 @@ with tabs[10]:
 # =============================================================================
 # TAB 12: FUZZY AHP
 # =============================================================================
-with tabs[11]:
+with tabs[12]:
     st.header("🧮 Fuzzy AHP")
+    purpose_box("AHP com <b>pesos fuzzy</b> e defuzzificação por centro de área. Captura incerteza nos pesos.")
     theory_box("Teoria (Chang, 1996)",
         """<p>AHP com TFN nos pesos. Defuzzificação por centro de área: w<sub>crisp</sub> = (l+m+u)/3.</p>""")
 
@@ -1604,8 +1844,9 @@ with tabs[11]:
 # =============================================================================
 # TAB 13: GRÁFICOS (Plotly bonitos e decisivos)
 # =============================================================================
-with tabs[12]:
+with tabs[13]:
     st.header("📊 Gráficos para Decisão")
+    purpose_box("<b>5 visualizações Plotly</b> para apoiar a decisão: heatmap rankings, radar Top-3, tornado sensibilidade, scores normalizados, convergência Top-3.")
     theory_box(
         "Visualizações para uma decisão rápida e clara",
         """
@@ -1748,8 +1989,9 @@ with tabs[12]:
 # =============================================================================
 # TAB 14: DASHBOARD CONSOLIDADO
 # =============================================================================
-with tabs[13]:
+with tabs[14]:
     st.header("🏆 Dashboard Consolidado")
+    purpose_box("Combinar os rankings de todos os modelos executados via <b>Borda invertido</b> (média de posições). Identifica o Top-3 consensual.")
     theory_box(
         "Consolidação dos modelos",
         """<p>Aplica-se <b>Borda invertido</b> (média de posições) para agregar todos os modelos.
@@ -1795,8 +2037,9 @@ with tabs[13]:
 # =============================================================================
 # TAB 15: RELATÓRIO
 # =============================================================================
-with tabs[14]:
+with tabs[15]:
     st.header("📄 Relatório Executivo")
+    purpose_box("Resumo final visual com a <b>recomendação</b>, top-3, robustez, pesos e metodologia. Permite descarregar em CSV, Excel ou Markdown.")
     theory_box(
         "Relatório consolidado",
         """<p>Resumo visual e descarregável da análise: dados de entrada, pesos, rankings,
@@ -1989,13 +2232,30 @@ with tabs[14]:
     for k, alt in enumerate(top3):
         medal = ["🥇", "🥈", "🥉"][k]
         md_lines.append(f"{k+1}. {medal} **{alt}** — Pos média: {df_dash.iloc[k]['Posição Média']}, Top-3 em {df_dash.iloc[k]['Top-3 em N modelos']}/{len(methods)}")
+    # Helper local: converter DataFrame para markdown table sem depender de tabulate
+    def df_to_md(df):
+        cols = list(df.columns)
+        header = "| " + " | ".join(str(c) for c in cols) + " |"
+        sep = "| " + " | ".join("---" for _ in cols) + " |"
+        rows = []
+        for _, row in df.iterrows():
+            cells = []
+            for c in cols:
+                v = row[c]
+                if isinstance(v, float):
+                    cells.append(f"{v:.4f}")
+                else:
+                    cells.append(str(v))
+            rows.append("| " + " | ".join(cells) + " |")
+        return "\n".join([header, sep] + rows)
+
     md_lines.append("\n## Rankings por Modelo")
-    md_lines.append(df_dash.to_markdown(index=False))
+    md_lines.append(df_to_md(df_dash))
     md_lines.append("\n## Pesos Activos")
     md_lines.append(f"Fonte: {eng_src}\n")
-    md_lines.append(df_w.to_markdown(index=False))
+    md_lines.append(df_to_md(df_w))
     md_lines.append("\n## Robustez")
-    md_lines.append(df_rob.to_markdown(index=False))
+    md_lines.append(df_to_md(df_rob))
     md_report = "\n".join(md_lines)
 
     ec1, ec2, ec3 = st.columns(3)
