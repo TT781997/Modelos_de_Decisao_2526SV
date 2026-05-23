@@ -15,6 +15,68 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from io import StringIO, BytesIO
+import re
+
+# =============================================================================
+# HELPER GLOBAL: limpeza robusta de strings numéricas
+# Aceita: "250 000 000 €", "0,462", "25%", "1,234.56", "1.234,56", "  €5.000  "
+# =============================================================================
+def clean_number_string(s):
+    """Converte string com formatação variada para string parsável por to_numeric."""
+    if pd.isna(s):
+        return None
+    s = str(s).strip()
+    if not s or s.lower() in ("nan", "none", "-", "—", "n/a", "na"):
+        return None
+    # Remover símbolos monetários, unidades e %
+    for ch in ['€', '$', '£', '¥', '%', '\u20ac', '\u00a3', '\u00a5']:
+        s = s.replace(ch, '')
+    # Remover "R$" composto e strings comuns
+    s = re.sub(r'\bR\$\s*', '', s)
+    # Remover espaços (incluindo non-breaking 0xA0 e narrow 0x202F)
+    s = s.replace(' ', '').replace('\xa0', '').replace('\u202f', '').replace('\u2009', '')
+    s = s.strip()
+    if not s:
+        return None
+    # Resolver decimal/milhares
+    if ',' in s and '.' in s:
+        # Ambos presentes: o último é decimal
+        if s.rfind(',') > s.rfind('.'):
+            # Formato EU: 1.234,56 → 1234.56
+            s = s.replace('.', '').replace(',', '.')
+        else:
+            # Formato US: 1,234.56 → 1234.56
+            s = s.replace(',', '')
+    elif ',' in s:
+        # Só vírgula. Heurística:
+        parts = s.split(',')
+        # Se múltiplas vírgulas E cada parte após a 1ª tem 3 dígitos → milhares: "1,234,567"
+        # Se 1 vírgula seguida de exactamente 3 dígitos numéricos e parte antes tem >=1 dígito → ambíguo (preferir decimal PT, ex: "0,462")
+        # Default seguro: tratar como decimal PT
+        if len(parts) > 2 and all(len(p) == 3 and p.isdigit() for p in parts[1:]):
+            s = s.replace(',', '')  # milhares
+        else:
+            s = s.replace(',', '.')  # decimal PT
+    elif '.' in s:
+        # Só ponto. Heurística:
+        parts = s.split('.')
+        # Múltiplos pontos com cada parte após 1ª de 3 dígitos → milhares EU: "1.000.000"
+        if len(parts) > 2 and all(len(p) == 3 and p.isdigit() for p in parts[1:]):
+            s = s.replace('.', '')
+        # 1 ponto seguido de 3 dígitos E parte antes >= 1 dígito não-zero → possível milhares EU "5.000"
+        # MAS pode ser decimal — vai depender do contexto. Default: decimal (US convention).
+        # Não fazemos nada (deixa pd.to_numeric tratar como decimal).
+    return s
+
+
+def clean_numeric_column(series):
+    """Aplica clean_number_string a uma série e devolve to_numeric + contagem de falhas."""
+    cleaned = series.astype(str).apply(clean_number_string)
+    nums = pd.to_numeric(cleaned, errors="coerce")
+    # Contar falhas reais (excluindo NaN/vazios originais)
+    original_empty = series.isna() | (series.astype(str).str.strip() == "")
+    n_failed = int((nums.isna() & ~original_empty).sum())
+    return nums, n_failed
 
 # =============================================================================
 # CONFIG
@@ -483,17 +545,20 @@ with st.sidebar:
                 else:
                     df_preview = pd.read_csv(StringIO(paste_text), sep=sep_guess, dtype=str)
 
-                # Converter decimais com vírgula para ponto E DEPOIS para numérico
+                # Converter strings numéricas (suporta €, %, espaços, vírgulas decimais)
+                total_failures = 0
                 for c in df_preview.columns[1:]:
-                    df_preview[c] = (df_preview[c].astype(str)
-                                                  .str.replace(",", ".", regex=False)
-                                                  .str.strip())
-                    df_preview[c] = pd.to_numeric(df_preview[c], errors="coerce").fillna(0)
+                    nums, n_failed = clean_numeric_column(df_preview[c])
+                    df_preview[c] = nums.fillna(0)
+                    total_failures += n_failed
 
                 first_col = df_preview.columns[0]
                 df_preview = df_preview.rename(columns={first_col: "Alternativa"})
 
                 st.caption(f"✓ Detectado: separador `{sep_guess}` · {len(df_preview)} alts × {len(df_preview.columns)-1} crits")
+                if total_failures > 0:
+                    st.warning(f"⚠️ {total_failures} valores não foram convertidos para número e ficaram a **0**. "
+                               f"Verifique a tabela abaixo e corrija antes de confirmar.")
                 st.dataframe(df_preview, hide_index=True, use_container_width=True)
 
                 if st.button("📋 Confirmar e carregar", use_container_width=True, type="primary"):
@@ -536,12 +601,18 @@ with st.sidebar:
                         "Tipo": ["max"] * len(crits),
                         "Peso Manual": [1.0 / len(crits)] * len(crits),
                     })
+                    total_failures = 0
                     for c in crits:
-                        df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0)
+                        nums, n_failed = clean_numeric_column(df[c])
+                        df[c] = nums.fillna(0)
+                        total_failures += n_failed
                     st.session_state.criteria_df = new_crits
                     st.session_state.matrix_df = df
                     st.session_state.engine_weights = {}
-                    st.success(f"✓ Carregado: {len(df)} alts × {len(crits)} crits")
+                    msg = f"✓ Carregado: {len(df)} alts × {len(crits)} crits"
+                    if total_failures > 0:
+                        msg += f" · ⚠️ {total_failures} valores não numéricos ficaram a 0"
+                    st.success(msg)
                     st.rerun()
                 except Exception as e:
                     st.error(f"❌ Erro: {e}")
@@ -554,21 +625,33 @@ with st.sidebar:
             "**Quadro B — Critérios com pesos**: Código, Critério, Natureza (Benefício/Custo), Peso."
         )
 
-        with st.expander("Exemplo do formato (caso MCG)", expanded=False):
+        with st.expander("📖 Exemplo do formato (caso MCG do enunciado)", expanded=False):
+            st.markdown("**A app aceita os valores TAL COMO VÊM no enunciado:**")
+            st.markdown("• Espaços nos milhares: `250 000 000` &nbsp;&nbsp;• Símbolo €: `300 000 €` &nbsp;&nbsp;• Percentagem: `25%` &nbsp;&nbsp;• Vírgula decimal: `0,462`")
             st.code(
-                "Quadro A — Alternativas:\n"
-                "Alt\tRef\tCliente\tValor Pot\tProb Fecho\tEsforço\tFit\tUrgência\tRel Cliente\tEstado\n"
-                "A1\t9786\tBe\t250000000\t0.25\t24\t4\t180\t4\tCotação\n"
-                "A2\t9780\tZf\t300000\t0.35\t8\t5\t60\t5\tCotação\n"
-                "...\n\n"
-                "Quadro B — Critérios:\n"
+                "Quadro A — Alternativas (copia do enunciado 1.3):\n"
+                "#\tRef. Interna\tCliente\tValor Pot.\tProb. Fecho\tEstado\n"
+                "A1\t9786\tBe\t250 000 000 €\t25%\tCotação\n"
+                "A2\t9780\tZf\t300 000 €\t35%\tCotação\n"
+                "A3\t9768\tFo\t900 000 €\t50%\tCotação\n"
+                "A4\t9755\tAd\t650 000 €\t50%\tCotação\n"
+                "A5\t9736\tKb\t5 000 000 €\t40%\tCotação\n"
+                "A6\t9735\tFo\t1 350 000 €\t50%\tNegociação\n"
+                "A7\t9720\tFe\t10 500 000 €\t40%\tNegociação\n"
+                "A8\t9706\tSt\t3 450 000 €\t40%\tNegociação\n"
+                "A9\t9537\tKb\t15 000 000 €\t60%\tNegociação\n\n"
+                "Quadro B — Critérios (copia do enunciado 1.4):\n"
                 "Código\tCritério\tNatureza\tPeso\n"
-                "C1_VP\tValor Potencial\tBenefício\t0.462\n"
-                "C2_PF\tProb. Fecho\tBenefício\t0.218\n"
-                "C3_EE\tEsforço Estimado\tCusto\t0.024\n"
-                "...",
+                "C1\tValor Potencial do Contrato (VP)\tBenefício\t30%\n"
+                "C2\tProbabilidade de Fecho (PF)\tBenefício\t22%\n"
+                "C3\tEsforço Estimado (EE)\tCusto\t7%\n"
+                "C4\tFit Estratégico (FE)\tBenefício\t15%\n"
+                "C5\tUrgência / Prazo Decisão (UD)\tBenefício\t3%\n"
+                "C6\tRelacionamento c/ Cliente (RC)\tBenefício\t17%\n",
                 language="text"
             )
+            st.caption("⚠️ **Importante:** o Quadro 1.3 do enunciado só tem 2 critérios numéricos (Valor Pot. e Prob. Fecho). "
+                       "Para os restantes (C3-C6) terá de adicionar colunas com os valores das Secções 4.1 e 4.2 do questionário.")
 
         paste_alts = st.text_area(
             "**Quadro A — Alternativas (com atributos)** — colar Ctrl+V:",
@@ -624,18 +707,24 @@ with st.sidebar:
 
                 numeric_cols = []
                 metadata_cols = []
+                total_failures_alts = 0
                 for c in df_alts_raw.columns[1:]:
-                    s = df_alts_raw[c].astype(str).str.replace(",", ".", regex=False).str.strip()
-                    nums = pd.to_numeric(s, errors="coerce")
+                    nums, n_failed = clean_numeric_column(df_alts_raw[c])
                     if nums.notna().mean() > 0.5:
+                        # Coluna detectada como numérica
                         df_alts_raw[c] = nums.fillna(0)
                         numeric_cols.append(c)
+                        total_failures_alts += n_failed
                     else:
+                        # Coluna metadata (texto)
                         metadata_cols.append(c)
 
                 # PREVIEW
                 st.caption(f"✓ Detectados: {len(df_alts_raw)} alts, "
                            f"{len(numeric_cols)} crit numéricos, {len(metadata_cols)} metadados")
+                if total_failures_alts > 0:
+                    st.warning(f"⚠️ {total_failures_alts} valores no Quadro A não foram convertidos "
+                               f"para número (ficaram a 0). Reveja na tabela abaixo.")
                 if metadata_cols:
                     st.caption(f"📝 Metadados (não usados para cálculo, mas guardados): {', '.join(metadata_cols)}")
                 st.dataframe(df_alts_raw, hide_index=True, use_container_width=True)
@@ -653,9 +742,14 @@ with st.sidebar:
                         codigo = str(row[col_code]) if col_code else nome
                         nat = (str(row[col_nat]).lower() if col_nat else "max")
                         tipo = "min" if any(x in nat for x in ["custo", "cost", "min"]) else "max"
-                        peso_str = str(row[col_peso]).replace(",", ".") if col_peso else "0"
+                        # Suporta "22%", "0,462", "0.218", "25-35%" (pega no primeiro número)
+                        peso_raw = row[col_peso] if col_peso else "0"
+                        peso_clean = clean_number_string(peso_raw)
                         try:
-                            peso = float(peso_str)
+                            peso = float(peso_clean) if peso_clean else 0
+                            # Se peso veio em % (>1), assumir percentagem e dividir
+                            if peso > 1:
+                                peso = peso / 100
                         except Exception:
                             peso = 1.0 / len(df_crits_raw)
                         crit_list.append({"Critério": codigo, "Tipo": tipo, "Peso Manual": peso})
@@ -1021,16 +1115,12 @@ with tabs[1]:
 # =============================================================================
 with tabs[2]:
     st.header("⚖️ Motores de Pesos")
-    st.markdown(
-        '<div style="background:#e8f5e9; padding:10px 16px; border-left:4px solid #2e7d32; '
-        'border-radius:4px; margin-bottom:16px;">'
-        '<b>📌 Para que serve esta aba:</b> Calcular automaticamente os <b>pesos dos critérios</b> '
-        'em vez de os definir manualmente. Útil quando não sabe que peso atribuir ou quer um método objectivo. '
-        '<br><br><b>Workflow:</b> (1) escolher motor abaixo · (2) preencher inputs específicos · '
-        '(3) ver pesos calculados · (4) na sidebar activar <b>"🔌 Injecção Global"</b> e escolher este motor '
-        'para os modelos MCDM passarem a usar estes pesos.'
-        '</div>',
-        unsafe_allow_html=True
+    purpose_box(
+        "Calcular automaticamente os <b>pesos dos critérios</b> em vez de os definir manualmente. "
+        "Útil quando não sabe que peso atribuir ou quer um método objectivo. <br><br>"
+        "<b>Workflow:</b> (1) escolher motor abaixo · (2) preencher inputs específicos · "
+        "(3) ver pesos calculados · (4) na sidebar activar <b>'🔌 Injecção Global'</b> e escolher este motor "
+        "para os modelos MCDM passarem a usar estes pesos."
     )
     theory_box(
         "4 métodos disponíveis (AHP está em aba dedicada)",
