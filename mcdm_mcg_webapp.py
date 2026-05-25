@@ -431,8 +431,8 @@ def store_result(method_name, scores, ranking, higher_is_better=True):
 # =============================================================================
 st.title("📊 MCDM Dashboard")
 st.markdown(
-    "**Decisão Multicritério** · 3 modos de entrada de dados · 9 modelos MCDM · "
-    "5 motores de pesos · Sensibilidade universal · Relatório final · Precisão 5 casas decimais"
+    "**Decisão Multicritério** · 3 modos de entrada de dados · 3 modelos MCDM (TOPSIS, PROMETHEE II, COPRAS) · "
+    "AHP como motor de pesos · Sensibilidade universal · Dashboard executivo · Relatório final · Precisão 5 decimais"
 )
 
 
@@ -485,20 +485,11 @@ with st.sidebar:
 TAB_LABELS = [
     "🏠 Início",
     "📋 Dados",
-    "⚖️ Motores de Pesos",
     "🔍 AHP",
     "🎯 TOPSIS",
     "📈 PROMETHEE II",
-    "⚖️ VIKOR",
     "📊 COPRAS",
-    "🚫 ELECTRE III",
-    "💡 MAUT",
-    "🌐 DEMATEL",
-    "🌫️ Fuzzy TOPSIS",
-    "🧮 Fuzzy AHP",
-    "📊 Gráficos",
     "🏆 Dashboard",
-    "🎛️ Vista 360°",
     "📑 Relatório Técnico",
 ]
 tabs = st.tabs(TAB_LABELS)
@@ -544,23 +535,22 @@ with tabs[0]:
         st.markdown(
             "Defina importância dos critérios:\n\n"
             "• **Manual** (na aba Dados)\n\n"
-            "• **Motor objectivo** (aba ⚖️): SWING, SMART, Entropia, CRITIC\n\n"
-            "• **AHP** (aba 🔍): par-a-par"
+            "• **AHP** (aba 🔍): comparação par-a-par com escala Saaty e validação CR<0.10\n\n"
+            "Único motor de pesos disponível além do manual."
         )
     with c3:
         st.markdown("### 3️⃣ Modelos")
         st.markdown(
-            "Cada aba executa um modelo:\n\n"
-            "TOPSIS, PROMETHEE II, VIKOR, COPRAS, ELECTRE III, MAUT, DEMATEL, Fuzzy TOPSIS, Fuzzy AHP\n\n"
-            "Cada uma dá ranking + sensibilidade."
+            "Executar **3 modelos de ranking**:\n\n"
+            "🎯 **TOPSIS** · 📈 **PROMETHEE II** · 📊 **COPRAS**\n\n"
+            "Cada uma dá ranking + gráfico + sensibilidade."
         )
     with c4:
         st.markdown("### 4️⃣ Decisão")
         st.markdown(
             "Consolide e decida:\n\n"
-            "• **📊 Gráficos**: visualizações\n\n"
-            "• **🏆 Dashboard**: consenso\n\n"
-            "• **📑 Relatório**: descarregar"
+            "• **🏆 Dashboard**: vista executiva consolidada\n\n"
+            "• **📑 Relatório**: descarregar CSV/Excel/MD"
         )
 
     st.markdown("---")
@@ -568,24 +558,19 @@ with tabs[0]:
 
     tab_descriptions = [
         ("📋 Dados", "**Hub central**: escolher fonte de dados (Demo/Manual/Quadros em bruto), "
-                     "colar Q1.3 e Q1.4, editar critérios e matriz, escolher motor de pesos, ajustar sensibilidade. "
-                     "Mostra estatísticas e heatmap."),
-        ("⚖️ Motores de Pesos", "Calcula pesos por **4 métodos**: SWING, SMART, Entropia, CRITIC. "
-                                 "Active a injecção global na sidebar para os modelos usarem estes pesos."),
-        ("🔍 AHP", "Comparação par-a-par escala Saaty 1-9. Calcula pesos e valida CR < 0.10. "
-                   "Se CR ≥ 0.10 → sugere correcção iterativa do par mais inconsistente."),
-        ("🎯 TOPSIS", "Hwang & Yoon (1981). Distância à solução ideal e anti-ideal."),
-        ("📈 PROMETHEE II", "Brans (1985). Fluxos de preferência par-a-par com 3 funções."),
-        ("⚖️ VIKOR", "Opricovic & Tzeng (2004). Solução de compromisso (S + R)."),
-        ("📊 COPRAS", "Zavadskas & Kaklauskas (1996). Grau de utilidade U_i (%)."),
-        ("🚫 ELECTRE III", "Roy (1968+). Sobreclassificação com limiares q/p/v."),
-        ("💡 MAUT", "Keeney & Raiffa (1976). Utilidade aditiva com 4 funções."),
-        ("🌐 DEMATEL", "Gabus & Fontela (1972). Relações causa-efeito entre critérios."),
-        ("🌫️ Fuzzy TOPSIS", "Chen (2000). TOPSIS com números fuzzy triangulares."),
-        ("🧮 Fuzzy AHP", "Chang (1996). AHP com pesos fuzzy + defuzzificação."),
-        ("📊 Gráficos", "5 visualizações: heatmap rankings, radar Top-3, tornado SA, scores, convergência."),
-        ("🏆 Dashboard", "Consolida rankings via Borda invertido. Top-3 consensual."),
-        ("🎛️ Vista 360°", "Dashboard one-page estilo Figura 1 do enunciado."),
+                     "colar Q1.3 e Q1.4, editar critérios e matriz, escolher motor de pesos (Manual ou AHP), "
+                     "ajustar sensibilidade. Mostra estatísticas e heatmap."),
+        ("🔍 AHP", "Saaty (1980). Comparação par-a-par escala Saaty 1-9. Calcula pesos e valida CR < 0.10. "
+                   "Se CR ≥ 0.10 → sugere correcção iterativa. **É o único motor de pesos disponível** "
+                   "(além do manual)."),
+        ("🎯 TOPSIS", "Hwang & Yoon (1981). Distância à solução ideal A⁺ e anti-ideal A⁻. "
+                       "Gráfico horizontal de CC* incluído."),
+        ("📈 PROMETHEE II", "Brans (1985). Fluxos de preferência par-a-par com 3 funções (Usual/Linear/Gaussiana). "
+                             "Gráfico horizontal de φ líquido incluído."),
+        ("📊 COPRAS", "Zavadskas & Kaklauskas (1996). Função proporcional benefícios/custos. Grau de utilidade U_i (%). "
+                       "Gráfico horizontal incluído."),
+        ("🏆 Dashboard", "**Vista consolidada one-page** com ranking, radar Top-3, sensibilidade, gráficos por modelo e recomendação final. "
+                          "Estilo executivo MCG."),
         ("📑 Relatório Técnico", "7 capítulos + Referências APA. Downloads CSV/Excel/Markdown."),
     ]
 
@@ -953,13 +938,12 @@ with tabs[1]:
     st.markdown('<div class="data-section"><h3>⚙️ 2-bis. Motor de Pesos Activo (afecta TODOS os modelos)</h3></div>',
                 unsafe_allow_html=True)
     st.caption(
-        "Esta é a **fonte dos pesos** que vai ser usada em TOPSIS, PROMETHEE II, VIKOR, COPRAS, "
-        "ELECTRE III, MAUT, DEMATEL, Fuzzy TOPSIS, Fuzzy AHP. "
+        "Esta é a **fonte dos pesos** que vai ser usada em TOPSIS, PROMETHEE II e COPRAS. "
         "Se escolher **Manual**, são usados os pesos da tabela acima. "
-        "Se escolher um motor objectivo/subjectivo, esses pesos têm de ser calculados nas abas respectivas."
+        "Se escolher **AHP**, os pesos vêm da Matriz de Comparação Par-a-Par (aba 🔍 AHP)."
     )
 
-    motor_opcoes = ["Manual (Peso da tabela acima)", "SWING", "SMART", "Entropia", "CRITIC", "AHP"]
+    motor_opcoes = ["Manual (Peso da tabela acima)", "AHP"]
 
     # estado actual derivado do session_state
     if not st.session_state.global_injection_on:
@@ -986,7 +970,7 @@ with tabs[1]:
     # mensagens dirigidas ao utilizador conforme a escolha
     if motor_escolhido == "Manual (Peso da tabela acima)":
         st.success("✓ Manual seleccionado. Os modelos usam os **pesos da tabela** acima (já normalizados).")
-    elif motor_escolhido == "AHP":
+    else:  # AHP
         if "AHP" in st.session_state.engine_weights:
             st.success(
                 "✓ AHP seleccionado. Os pesos da última execução AHP serão usados nos modelos. "
@@ -998,22 +982,6 @@ with tabs[1]:
                 "Tem de ir à aba **🔍 AHP**, preencher a Matriz de Comparação Par-a-Par (escala Saaty 1-9, "
                 "com até 5 casas decimais — ex.: 0,11111), validar CR < 0,10 e voltar aqui. "
                 "Enquanto o AHP não estiver calculado, os modelos usam **pesos manuais** como fallback."
-            )
-    else:  # SWING / SMART / Entropia / CRITIC
-        if motor_escolhido in st.session_state.engine_weights:
-            st.success(
-                f"✓ {motor_escolhido} seleccionado. Os pesos calculados na aba **⚖️ Motores de Pesos** "
-                "serão usados em TODOS os modelos."
-            )
-        else:
-            extra = ("Os métodos **SWING** e **SMART** exigem que defina pontuações na aba ⚖️. "
-                     if motor_escolhido in ("SWING", "SMART")
-                     else "Os métodos **Entropia** e **CRITIC** calculam automaticamente — basta entrar na aba ⚖️ e seleccioná-los.")
-            st.warning(
-                f"⚠️ **{motor_escolhido} ainda não foi calculado.** "
-                f"Vá à aba **⚖️ Motores de Pesos**, escolha {motor_escolhido} e o cálculo é feito. "
-                f"{extra} "
-                f"Enquanto não calcular, os modelos usam **pesos manuais** como fallback."
             )
 
     # ============================================================================
@@ -1088,281 +1056,9 @@ with tabs[1]:
     st.caption("1.0 = melhor; 0.0 = pior (com inversão automática para critérios de min).")
 
 # =============================================================================
-# TAB 2: MOTORES DE PESOS (SEM AHP — está na aba dedicada)
+# TAB 2: AHP (FULL — matriz Saaty + consistência + iterações)
 # =============================================================================
 with tabs[2]:
-    st.header("⚖️ Motores de Pesos")
-    purpose_box(
-        "Calcular automaticamente os <b>pesos dos critérios</b> em vez de os definir manualmente. "
-        "Útil quando não sabe que peso atribuir ou quer um método objectivo. <br><br>"
-        "<b>Workflow:</b> (1) escolher motor abaixo · (2) preencher inputs específicos · "
-        "(3) ver pesos calculados · (4) na sidebar activar <b>'🔌 Injecção Global'</b> e escolher este motor "
-        "para os modelos MCDM passarem a usar estes pesos."
-    )
-    theory_box(
-        "4 métodos disponíveis (AHP está em aba dedicada)",
-        """
-        <ul>
-            <li><b>SWING</b> (subjectivo): você define <i>quão impactante é o swing pior→melhor</i> em cada critério (0-100). Pesos = scores/Σscores.</li>
-            <li><b>SMART</b> (subjectivo): você classifica cada critério em 0-100 de importância. Mais simples que SWING.</li>
-            <li><b>Entropia de Shannon</b> (objectivo): cálculo automático a partir da matriz. Pesos = variabilidade dos dados.</li>
-            <li><b>CRITIC</b> (objectivo): cálculo automático. Pesos = variância × (1 − correlação) com outros critérios.</li>
-        </ul>
-        <p>Os métodos <b>subjectivos</b> precisam dos seus inputs (pontuações). Os <b>objectivos</b> calculam tudo sozinhos.</p>
-        """
-    )
-
-    if not check_valid_input():
-        st.stop()
-
-    matrix, alts, crits, types = get_decision_matrix()
-    n = len(crits)
-
-    engine = st.radio(
-        "Motor a usar:",
-        ["SWING", "SMART", "Entropia", "CRITIC"],
-        horizontal=True, key="engine_radio"
-    )
-
-    # ----------- SWING -----------
-    if engine == "SWING":
-        st.subheader("🎢 SWING Weighting")
-        theory_box(
-            "Como funciona (von Winterfeldt & Edwards, 1986) — método SUBJECTIVO",
-            """
-            <p><b>Conceito:</b> imagine uma alternativa onde TODOS os critérios estão no nível PIOR.
-            Para cada critério, pergunta-se «qual é o benefício de fazer SWING desse pior nível
-            para o melhor?». O critério com swing mais impactante recebe 100 pontos; os outros recebem
-            pontuações relativas (0-100).</p>
-            <p><b>Diferenciação MAX/MIN:</b> os níveis "Pior" e "Melhor" são calculados automaticamente
-            <b>respeitando o tipo do critério</b>:
-            para <i>benefício (max)</i> → Pior = mínimo, Melhor = máximo;
-            para <i>custo (min)</i> → Pior = máximo, Melhor = mínimo.</p>
-            """
-        )
-        st.info(
-            "💡 **Como preencher:** Edite a coluna **'Swing Score (0-100)'**. "
-            "O critério mais importante = 100. Os outros, proporcionalmente."
-        )
-        st.latex(r"w_j = \frac{p_j}{\sum_k p_k},\quad p_j \in [0, 100]")
-
-        swing_key = f"swing_data_{'_'.join(crits)}"
-        if swing_key not in st.session_state or len(st.session_state[swing_key]) != n:
-            pior = [matrix[:, j].min() if types[j] == "max" else matrix[:, j].max() for j in range(n)]
-            melhor = [matrix[:, j].max() if types[j] == "max" else matrix[:, j].min() for j in range(n)]
-            st.session_state[swing_key] = pd.DataFrame({
-                "Critério": crits,
-                "Nível Pior": pior,
-                "Nível Melhor": melhor,
-                "Swing Score (0-100)": [100] + [50] * (n - 1)
-            })
-
-        edited = st.data_editor(
-            st.session_state[swing_key], use_container_width=True, hide_index=True,
-            key="swing_edit",
-            column_config={
-                "Critério": st.column_config.TextColumn("Critério", disabled=True),
-                "Nível Pior": st.column_config.NumberColumn("Nível Pior", format="%.5f", step=0.00001),
-                "Nível Melhor": st.column_config.NumberColumn("Nível Melhor", format="%.5f", step=0.00001),
-                "Swing Score (0-100)": st.column_config.NumberColumn(
-                    "Swing Score", min_value=0.0, max_value=100.0, step=5.0),
-            },
-            disabled=["Critério"]
-        )
-        st.session_state[swing_key] = edited
-
-        pts = pd.to_numeric(edited["Swing Score (0-100)"], errors="coerce").fillna(0).values
-        w_swing = pts / pts.sum() if pts.sum() > 0 else np.ones(n) / n
-
-        st.markdown("**Pesos SWING calculados:**")
-        df_w = pd.DataFrame({"Critério": crits, "Tipo": types, "Score": pts, "Peso": w_swing,
-                             "%": [f"{x*100:.3f}%" for x in w_swing]})
-        st.dataframe(df_w.style.format({"Score": "{:.2f}", "Peso": "{:.5f}"}),
-                    hide_index=True, use_container_width=True)
-
-        fig = px.bar(df_w, x="Critério", y="Peso", text=df_w["%"],
-                     color="Peso", color_continuous_scale="Viridis", title="Pesos SWING")
-        fig.update_traces(textposition="outside")
-        st.plotly_chart(fig, use_container_width=True)
-
-        st.session_state.engine_weights["SWING"] = w_swing
-        st.success(f"💾 Pesos SWING guardados (Σ={w_swing.sum():.5f}). Active a injecção global na sidebar para usar.")
-
-    elif engine == "SMART":
-        st.subheader("📐 SMART — Simple Multi-Attribute Rating Technique")
-        theory_box(
-            "Como funciona (von Winterfeldt & Edwards, 1986) — método SUBJECTIVO",
-            """
-            <p><b>Conceito:</b> mais simples que SWING. Você classifica directamente <b>cada critério em 0-100</b>
-            conforme a sua importância para a decisão.</p>
-            """
-        )
-        st.info("💡 **Como preencher:** edite a coluna **'Pontuação (0-100)'**. 100 = mais importante.")
-        st.latex(r"w_j = \frac{p_j}{\sum_k p_k}")
-
-        smart_key = f"smart_data_{'_'.join(crits)}"
-        if smart_key not in st.session_state or len(st.session_state[smart_key]) != n:
-            st.session_state[smart_key] = pd.DataFrame({
-                "Critério": crits, "Pontuação (0-100)": [80] * n
-            })
-        edited = st.data_editor(
-            st.session_state[smart_key], use_container_width=True, hide_index=True, key="smart_edit",
-            column_config={
-                "Critério": st.column_config.TextColumn("Critério", disabled=True),
-                "Pontuação (0-100)": st.column_config.NumberColumn(
-                    "Pontuação", min_value=0.0, max_value=100.0, step=5.0),
-            }, disabled=["Critério"]
-        )
-        st.session_state[smart_key] = edited
-        pts = pd.to_numeric(edited["Pontuação (0-100)"], errors="coerce").fillna(0).values
-        w_smart = pts / pts.sum() if pts.sum() > 0 else np.ones(n) / n
-        df_w = pd.DataFrame({"Critério": crits, "Score": pts, "Peso": w_smart,
-                             "%": [f"{x*100:.3f}%" for x in w_smart]})
-        st.dataframe(df_w.style.format({"Score": "{:.2f}", "Peso": "{:.5f}"}),
-                    hide_index=True, use_container_width=True)
-        fig = px.bar(df_w, x="Critério", y="Peso", text=df_w["%"],
-                     color="Peso", color_continuous_scale="Plasma", title="Pesos SMART")
-        fig.update_traces(textposition="outside")
-        st.plotly_chart(fig, use_container_width=True)
-        st.session_state.engine_weights["SMART"] = w_smart
-        st.success(f"💾 Pesos SMART guardados (Σ={w_smart.sum():.5f}).")
-
-    elif engine == "Entropia":
-        st.subheader("📊 Entropia de Shannon")
-        theory_box(
-            "Como funciona (Shannon, 1948) — método OBJECTIVO",
-            """
-            <p>Mede a <b>quantidade de informação</b> de cada critério via variabilidade dos dados.
-            Critérios com mais variabilidade → MAIOR peso. Sem inputs do utilizador.</p>
-            <p><b>Diferenciação MAX/MIN:</b></p>
-            <ul>
-                <li><b>Benefício (max):</b> normalização directa <code>x'<sub>ij</sub> = x<sub>ij</sub> / Σ x<sub>ij</sub></code></li>
-                <li><b>Custo (min):</b> normalização inversa <code>x'<sub>ij</sub> = (1/x<sub>ij</sub>) / Σ (1/x<sub>ij</sub>)</code> (valores menores são melhores → maior probabilidade)</li>
-            </ul>
-            <p>Em ambos os casos, valores zero/negativos são tratados com pequeno <i>shift</i> para garantir log positivo.</p>
-            """
-        )
-        st.info("💡 **Como usar:** nada a preencher. Os pesos calculam-se automaticamente. **MAX/MIN da tabela de critérios é respeitado.**")
-        st.latex(r"\text{max: } x'_{ij} = x_{ij}/\sum_i x_{ij};\quad \text{min: } x'_{ij} = (1/x_{ij})/\sum_i (1/x_{ij})")
-        st.latex(r"E_j = -k\sum_i x'_{ij}\ln x'_{ij},\;k = 1/\ln(m);\quad w_j = (1-E_j)/\sum_k(1-E_k)")
-
-        try:
-            m_rows = matrix.shape[0]
-            X_norm = np.zeros_like(matrix, dtype=float)
-            for j in range(n):
-                col = matrix[:, j].astype(float)
-                # se houver valores ≤ 0, fazer shift para tornar positivo (evita div/zero e log(0))
-                if (col <= 0).any():
-                    shift = abs(col.min()) + 1e-6
-                    col = col + shift
-                if types[j] == "max":
-                    s = col.sum()
-                    X_norm[:, j] = col / s if s > 0 else 1.0 / m_rows
-                else:  # min — inversão
-                    inv = 1.0 / col
-                    inv_sum = inv.sum()
-                    X_norm[:, j] = inv / inv_sum if inv_sum > 0 else 1.0 / m_rows
-            k = 1.0 / np.log(m_rows) if m_rows > 1 else 1.0
-            E = np.array([-k * np.sum(np.where(X_norm[:, j] > 0, X_norm[:, j] * np.log(X_norm[:, j]), 0))
-                          for j in range(n)])
-            d = 1 - E
-            w_ent = d / d.sum() if d.sum() > 0 else np.ones(n) / n
-            df_w = pd.DataFrame({
-                "Critério": crits, "Tipo": types,
-                "Entropia E_j": E, "Divergência d_j": d,
-                "Peso": w_ent, "%": [f"{x*100:.3f}%" for x in w_ent]
-            })
-            st.dataframe(df_w.style.format({"Entropia E_j": "{:.5f}", "Divergência d_j": "{:.5f}", "Peso": "{:.5f}"}),
-                        hide_index=True, use_container_width=True)
-            fig = px.bar(df_w, x="Critério", y="Peso", text=df_w["%"],
-                         color="Peso", color_continuous_scale="Greens", title="Pesos Entropia")
-            fig.update_traces(textposition="outside")
-            st.plotly_chart(fig, use_container_width=True)
-            st.session_state.engine_weights["Entropia"] = w_ent
-            st.success(f"💾 Pesos Entropia guardados (Σ={w_ent.sum():.5f}).")
-        except Exception as e:
-            st.error(f"Erro Entropia: {e}")
-
-    else:  # CRITIC
-        st.subheader("🔬 CRITIC")
-        theory_box(
-            "Como funciona (Diakoulaki, 1995) — método OBJECTIVO",
-            """
-            <p>Combina <b>contraste</b> (σ alto = mais informação) e <b>conflito</b> (baixa correlação com outros).
-            Sem inputs do utilizador.</p>
-            <p><b>Diferenciação MAX/MIN:</b> a normalização min-max já <i>inverte automaticamente</i> os
-            critérios de <i>custo (min)</i>: <code>r<sub>ij</sub> = (x<sub>max</sub> − x<sub>ij</sub>)/(x<sub>max</sub> − x<sub>min</sub>)</code>.
-            Assim, para todos os critérios, 1 = melhor e 0 = pior, e a variância e correlação são calculadas
-            sobre dados directamente comparáveis (com sentido único de "melhor = maior").</p>
-            """
-        )
-        st.info("💡 **Como usar:** nada a preencher. Pesos calculam-se automaticamente. **MAX/MIN respeitado via normalização min-max.**")
-        st.latex(r"r_{ij}:\;\text{normalizado min-max [0,1] (1 = melhor segundo MAX/MIN)}")
-        st.latex(r"C_j = \sigma_j\sum_k(1-r_{jk}); \quad w_j = C_j/\sum_l C_l")
-        try:
-            R = normalize_minmax(matrix, types)
-            sigma = R.std(axis=0, ddof=0)
-            # corrcoef requer pelo menos 2 amostras e variância > 0
-            if R.shape[0] >= 2 and (sigma > 0).all():
-                corr = np.corrcoef(R.T)
-                corr = np.nan_to_num(corr)
-            else:
-                corr = np.eye(n)
-            conflict = (1 - corr).sum(axis=1)
-            C = sigma * conflict
-            w_c = C / C.sum() if C.sum() > 0 else np.ones(n) / n
-            df_w = pd.DataFrame({
-                "Critério": crits, "Tipo": types, "σ_j": sigma, "Σ(1-r_jk)": conflict, "C_j": C,
-                "Peso": w_c, "%": [f"{x*100:.3f}%" for x in w_c]
-            })
-            st.dataframe(df_w.style.format({"σ_j": "{:.5f}", "Σ(1-r_jk)": "{:.5f}", "C_j": "{:.5f}", "Peso": "{:.5f}"}),
-                        hide_index=True, use_container_width=True)
-            with st.expander("Ver matriz de correlação"):
-                st.dataframe(pd.DataFrame(corr, index=crits, columns=crits)
-                              .style.format("{:.5f}").background_gradient(cmap="RdBu_r", vmin=-1, vmax=1),
-                            use_container_width=True)
-            fig = px.bar(df_w, x="Critério", y="Peso", text=df_w["%"],
-                         color="Peso", color_continuous_scale="Oranges", title="Pesos CRITIC")
-            fig.update_traces(textposition="outside")
-            st.plotly_chart(fig, use_container_width=True)
-            st.session_state.engine_weights["CRITIC"] = w_c
-            st.success(f"💾 Pesos CRITIC guardados (Σ={w_c.sum():.5f}).")
-        except Exception as e:
-            st.error(f"Erro CRITIC: {e}")
-
-    st.markdown("---")
-    st.subheader("📊 Comparação dos motores calculados")
-    if st.session_state.engine_weights:
-        comp = {"Critério": crits}
-        for eng, w in st.session_state.engine_weights.items():
-            if len(w) == n: comp[eng] = w
-        df_comp = pd.DataFrame(comp)
-        st.dataframe(df_comp.style.format({c: "{:.5f}" for c in df_comp.columns if c != "Critério"})
-                              .background_gradient(cmap="Blues", axis=None,
-                                                   subset=[c for c in df_comp.columns if c != "Critério"]),
-                    hide_index=True, use_container_width=True)
-        try:
-            fig = go.Figure()
-            for eng in df_comp.columns:
-                if eng != "Critério":
-                    fig.add_trace(go.Scatterpolar(
-                        r=list(df_comp[eng]) + [df_comp[eng].iloc[0]],
-                        theta=crits + [crits[0]],
-                        fill="toself", name=eng
-                    ))
-            fig.update_layout(title="Comparação dos motores (radar)",
-                              polar=dict(radialaxis=dict(visible=True, range=[0, max(df_comp[df_comp.columns[1:]].values.max(), 0.5)])),
-                              height=420)
-            st.plotly_chart(fig, use_container_width=True)
-        except Exception:
-            pass
-    else:
-        st.caption("Nenhum motor calculado ainda. Use as opções acima.")
-
-# =============================================================================
-# TAB 3: AHP (FULL — matriz Saaty + consistência + iterações)
-# =============================================================================
-with tabs[3]:
     st.header("🔍 AHP — Analytic Hierarchy Process (Saaty, 1980)")
     purpose_box("Calcular pesos via <b>comparação par-a-par</b> escala Saaty 1-9. Valida com CR < 0.10. <b>Se CR ≥ 0.10, a app sugere iterativamente</b> que par corrigir até atingir consistência.")
 
@@ -1530,15 +1226,51 @@ with tabs[3]:
 
     store_result("AHP", S, rank, higher_is_better=True)
 
+    # ===== Gráficos AHP: pesos (vertical) + ranking (horizontal) =====
+    step_header("📊 Gráficos AHP")
+    col_g1, col_g2 = st.columns(2)
+    with col_g1:
+        st.markdown("**Pesos dos Critérios (w_j)**")
+        df_w_chart = pd.DataFrame({"Critério": crits, "Peso": w_ahp}).sort_values("Peso", ascending=False)
+        colors_w = ["#1F4E78" if i < 2 else "#5B9BD5" for i in range(len(df_w_chart))]
+        fig_w = go.Figure(go.Bar(
+            x=df_w_chart["Critério"], y=df_w_chart["Peso"],
+            marker=dict(color=colors_w),
+            text=[f"{v*100:.2f}%" for v in df_w_chart["Peso"]], textposition="outside",
+        ))
+        fig_w.update_layout(
+            height=320, margin=dict(l=10, r=10, t=10, b=10),
+            xaxis_title="", yaxis_title="Peso w_j", showlegend=False,
+        )
+        st.plotly_chart(fig_w, use_container_width=True)
+    with col_g2:
+        st.markdown("**Ranking das Alternativas (Score AHP)**")
+        df_chart = df_res.copy()
+        colors_r = ["#1F4E78" if i < 3 else ("#5B9BD5" if i < 6 else "#F08080")
+                    for i in range(len(df_chart))]
+        fig_r = go.Figure(go.Bar(
+            x=df_chart["Score AHP"], y=df_chart["Alternativa"], orientation="h",
+            marker=dict(color=colors_r),
+            text=[f"{v:.5f}" for v in df_chart["Score AHP"]], textposition="outside",
+        ))
+        fig_r.update_layout(
+            height=max(280, 36 * len(alts)),
+            margin=dict(l=10, r=60, t=10, b=10),
+            xaxis_title="Score AHP",
+            yaxis=dict(autorange="reversed"), showlegend=False,
+        )
+        st.plotly_chart(fig_r, use_container_width=True)
+    st.caption(f"**CR = {CR:.5f}** {'✅ Consistência OK' if CR < 0.10 else '❌ Rever julgamentos'}")
+
     def ahp_score_fn(w):
         U = normalize_minmax(matrix, types)
         return (U * w).sum(axis=1)
     render_sensitivity(ahp_score_fn, alts, crits, w_ahp, higher_is_better=True, key_suffix="ahp")
 
 # =============================================================================
-# TAB 4: TOPSIS
+# TAB 3: TOPSIS
 # =============================================================================
-with tabs[4]:
+with tabs[3]:
     st.header("🎯 TOPSIS")
     purpose_box("Aplicar o método TOPSIS — mede a <b>distância à solução ideal</b> e ranqueia as alternativas.")
     theory_box("Teoria (Hwang & Yoon, 1981)",
@@ -1583,13 +1315,33 @@ with tabs[4]:
     st.markdown(f'<div class="result-box">🏆 Melhor segundo TOPSIS: <b>{best}</b> (CC* = {df_res.iloc[0]["CC*"]:.5f})</div>', unsafe_allow_html=True)
     store_result("TOPSIS", CC, rank, True)
 
+    # ===== Gráfico horizontal — Score de Proximidade Relativa =====
+    step_header("📊 Gráfico — Score de Proximidade Relativa (CC*)")
+    df_chart = df_res.copy()
+    colors_t = ["#1F4E78" if i < 3 else ("#5B9BD5" if i < 6 else "#F08080")
+                for i in range(len(df_chart))]
+    fig_top = go.Figure(go.Bar(
+        x=df_chart["CC*"], y=df_chart["Alternativa"], orientation="h",
+        marker=dict(color=colors_t),
+        text=[f"{v:.5f}" for v in df_chart["CC*"]], textposition="outside",
+    ))
+    fig_top.update_layout(
+        height=max(280, 36 * len(alts)),
+        margin=dict(l=10, r=60, t=20, b=10),
+        xaxis_title="CC* (Coeficiente de Proximidade)",
+        yaxis=dict(autorange="reversed"),
+        showlegend=False,
+    )
+    st.plotly_chart(fig_top, use_container_width=True)
+    st.caption("🟦 Azul escuro = Top-3 · 🟦 Azul claro = posições 4-6 · 🟥 Vermelho = últimos. Maior CC* = melhor.")
+
     render_sensitivity(lambda w: topsis_calc(w)[0], alts, crits, weights, True, "topsis")
 
 
 # =============================================================================
-# TAB 5: PROMETHEE II
+# TAB 4: PROMETHEE II
 # =============================================================================
-with tabs[5]:
+with tabs[4]:
     st.header("📈 PROMETHEE II")
     purpose_box("Método de <b>fluxos de preferência par-a-par</b>. Permite 3 funções (Usual, Linear, Gaussiana).")
     theory_box("Teoria (Brans, 1985)",
@@ -1640,73 +1392,33 @@ with tabs[5]:
     st.markdown(f'<div class="result-box">🏆 Melhor segundo PROMETHEE II: <b>{best}</b> (φ = {df_res.iloc[0]["φ líquido"]:.5f})</div>', unsafe_allow_html=True)
     store_result("PROMETHEE II", phi, rank, True)
 
+    # ===== Gráfico horizontal — Fluxo Líquido φ (waterfall style) =====
+    step_header("📊 Gráfico — Fluxo Líquido φ")
+    df_chart = df_res.copy()
+    colors_p = ["#1F4E78" if v >= 0 else "#C00000" for v in df_chart["φ líquido"]]
+    fig_prom = go.Figure(go.Bar(
+        x=df_chart["φ líquido"], y=df_chart["Alternativa"], orientation="h",
+        marker=dict(color=colors_p),
+        text=[f"{v:+.5f}" for v in df_chart["φ líquido"]], textposition="outside",
+    ))
+    fig_prom.add_vline(x=0, line_dash="solid", line_color="#333", line_width=1)
+    fig_prom.update_layout(
+        height=max(280, 36 * len(alts)),
+        margin=dict(l=10, r=60, t=20, b=10),
+        xaxis_title="φ líquido (φ⁺ − φ⁻)",
+        yaxis=dict(autorange="reversed"),
+        showlegend=False,
+    )
+    st.plotly_chart(fig_prom, use_container_width=True)
+    st.caption("🟦 Azul = fluxo positivo (preferida) · 🟥 Vermelho = fluxo negativo (preterida).")
+
     render_sensitivity(lambda w: prom_calc(w)[0], alts, crits, weights, True, "prom")
 
 
 # =============================================================================
-# TAB 6: VIKOR
+# TAB 5: COPRAS
 # =============================================================================
-with tabs[6]:
-    st.header("⚖️ VIKOR")
-    purpose_box("Encontra a <b>solução de compromisso</b> entre utilidade global (S) e arrependimento individual (R).")
-    theory_box("Teoria (Opricovic & Tzeng, 2004)",
-        """<p>Procura <b>solução de compromisso</b>. Menor Q = melhor.</p>""")
-
-    if not check_valid_input(): st.stop()
-    matrix, alts, crits, types = get_decision_matrix()
-    weights = get_active_weights()
-    show_active_weights_banner()
-
-    v_p = st.slider("Parâmetro v:", 0.0, 1.0, 0.5, 0.05, key="vikor_v")
-
-    def vikor_calc(W, v=0.5):
-        n_c = len(crits)
-        fb = np.array([matrix[:, j].max() if types[j] == "max" else matrix[:, j].min() for j in range(n_c)])
-        fw = np.array([matrix[:, j].min() if types[j] == "max" else matrix[:, j].max() for j in range(n_c)])
-        den = np.where(fb - fw == 0, 1e-9, fb - fw)
-        terms = np.zeros_like(matrix, dtype=float)
-        for j in range(n_c): terms[:, j] = W[j] * np.abs(fb[j] - matrix[:, j]) / abs(den[j])
-        S = terms.sum(axis=1); R = terms.max(axis=1)
-        Sr = (S.max() - S.min()) if S.max() != S.min() else 1e-9
-        Rr = (R.max() - R.min()) if R.max() != R.min() else 1e-9
-        Q = v * (S - S.min()) / Sr + (1 - v) * (R - R.min()) / Rr
-        return Q, S, R, fb, fw
-
-    Q, S, R, fb, fw = vikor_calc(weights, v_p)
-
-    step_header("Melhores f* e Piores f⁻")
-    st.dataframe(pd.DataFrame({"Critério": crits, "f*": fb, "f⁻": fw})
-                  .style.format({"f*": "{:.5f}", "f⁻": "{:.5f}"}),
-                hide_index=True, use_container_width=True)
-
-    step_header("Índices S, R e Q")
-    st.latex(r"Q_i = v\frac{S_i-S^*}{S^- - S^*} + (1-v)\frac{R_i-R^*}{R^- - R^*}")
-    rank = pd.Series(Q).rank(ascending=True, method='min').astype(int).values
-    df_res = pd.DataFrame({"Alternativa": alts, "S": S, "R": R, "Q": Q, "Ranking (menor Q)": rank}).sort_values("Ranking (menor Q)")
-    st.dataframe(df_res.style.format({"S": "{:.5f}", "R": "{:.5f}", "Q": "{:.5f}"})
-                  .background_gradient(cmap="RdYlGn_r", subset=["Q"]),
-                hide_index=True, use_container_width=True)
-
-    sorted_q = np.sort(Q)
-    if len(sorted_q) >= 2:
-        dq = sorted_q[1] - sorted_q[0]; thresh = 1.0 / max(len(alts) - 1, 1)
-        c1 = dq >= thresh
-        bi = int(np.argmin(Q)); si = int(np.argmin(S)); ri = int(np.argmin(R))
-        c2 = (bi == si) or (bi == ri)
-        st.markdown(f"**C1 (vantagem)**: ΔQ = {dq:.5f} vs 1/(J-1) = {thresh:.5f} → {'✅' if c1 else '❌'}")
-        st.markdown(f"**C2 (estabilidade)**: melhor em S ou R → {'✅' if c2 else '❌'}")
-
-    best = df_res.iloc[0]["Alternativa"]
-    st.markdown(f'<div class="result-box">🏆 Melhor segundo VIKOR: <b>{best}</b> (Q = {df_res.iloc[0]["Q"]:.5f})</div>', unsafe_allow_html=True)
-    store_result("VIKOR", -Q, rank, True)
-
-    render_sensitivity(lambda w: -vikor_calc(w, v_p)[0], alts, crits, weights, True, "vikor")
-
-
-# =============================================================================
-# TAB 7: COPRAS
-# =============================================================================
-with tabs[7]:
+with tabs[5]:
     st.header("📊 COPRAS")
     purpose_box("Função proporcional entre benefícios (S⁺) e custos (S⁻). Grau de utilidade U_i (%).")
     theory_box("Teoria (Zavadskas & Kaklauskas, 1996)", """<p>Avalia alternativas como função proporcional.</p>""")
@@ -1748,631 +1460,373 @@ with tabs[7]:
     st.markdown(f'<div class="result-box">🏆 Melhor segundo COPRAS: <b>{best}</b> (U = {df_res.iloc[0]["U_i (%)"]:.2f}%)</div>', unsafe_allow_html=True)
     store_result("COPRAS", Q, rank, True)
 
+    # ===== Gráfico horizontal — Grau de Utilidade U_i (%) =====
+    step_header("📊 Gráfico — Grau de Utilidade U_i (%)")
+    df_chart = df_res.copy()
+    colors_c = ["#1F4E78" if i < 3 else ("#5B9BD5" if i < 6 else "#F08080")
+                for i in range(len(df_chart))]
+    fig_cop = go.Figure(go.Bar(
+        x=df_chart["U_i (%)"], y=df_chart["Alternativa"], orientation="h",
+        marker=dict(color=colors_c),
+        text=[f"{v:.2f}%" for v in df_chart["U_i (%)"]], textposition="outside",
+    ))
+    fig_cop.update_layout(
+        height=max(280, 36 * len(alts)),
+        margin=dict(l=10, r=60, t=20, b=10),
+        xaxis_title="U_i (%) — grau de utilidade (100% = melhor)",
+        yaxis=dict(autorange="reversed"),
+        showlegend=False,
+    )
+    st.plotly_chart(fig_cop, use_container_width=True)
+    st.caption("🟦 Azul escuro = Top-3 · 🟦 Azul claro = posições 4-6 · 🟥 Vermelho = últimos. Maior U = melhor.")
+
     render_sensitivity(lambda w: copras_calc(w)[0], alts, crits, weights, True, "copras")
 
-# =============================================================================
-# TAB 8: ELECTRE III
-# =============================================================================
-with tabs[8]:
-    st.header("🚫 ELECTRE III")
-    purpose_box("Método de <b>sobreclassificação</b> com limiares q/p/v.")
-    theory_box("Teoria (Roy, 1968+)", """<p>Sobreclassificação par-a-par com 3 limiares.</p>""")
-
-    if not check_valid_input(): st.stop()
-    matrix, alts, crits, types = get_decision_matrix()
-    weights = get_active_weights()
-    show_active_weights_banner()
-    n = len(crits); m = len(alts)
-
-    st.markdown("**Limiares % do intervalo de cada critério:**")
-    c1, c2, c3 = st.columns(3)
-    qp = c1.slider("q (indiferença) %", 0, 30, 5, 1, key="elec_q")
-    pp = c2.slider("p (preferência) %", 5, 50, 20, 1, key="elec_p")
-    vp = c3.slider("v (veto) %", 30, 80, 50, 1, key="elec_v")
-
-    def elec_calc(W):
-        q = np.zeros(n); p = np.zeros(n); v = np.zeros(n)
-        for j in range(n):
-            rng = matrix[:, j].max() - matrix[:, j].min()
-            q[j] = rng * qp / 100; p[j] = rng * pp / 100; v[j] = rng * vp / 100
-            if p[j] <= q[j]: p[j] = q[j] + 0.001
-            if v[j] <= p[j]: v[j] = p[j] + 0.001
-        cP = np.zeros((m, m, n)); dP = np.zeros((m, m, n))
-        for a in range(m):
-            for b in range(m):
-                if a == b: continue
-                for j in range(n):
-                    ga, gb = (matrix[a, j], matrix[b, j]) if types[j] == "max" else (-matrix[a, j], -matrix[b, j])
-                    diff = ga + q[j] - gb; diff2 = ga + p[j] - gb
-                    if diff >= 0: cP[a, b, j] = 1.0
-                    elif diff2 <= 0: cP[a, b, j] = 0.0
-                    else: cP[a, b, j] = (p[j] + ga - gb) / (p[j] - q[j])
-                    dif = gb - ga - p[j]; dif2 = gb - ga - v[j]
-                    if dif <= 0: dP[a, b, j] = 0.0
-                    elif dif2 >= 0: dP[a, b, j] = 1.0
-                    else: dP[a, b, j] = (gb - ga - p[j]) / (v[j] - p[j])
-        C = (cP * W).sum(axis=2)
-        Sc = C.copy()
-        for a in range(m):
-            for b in range(m):
-                if a == b: continue
-                for j in range(n):
-                    if dP[a, b, j] > C[a, b]:
-                        Sc[a, b] *= (1 - dP[a, b, j]) / (1 - C[a, b]) if C[a, b] < 1 else 0
-        return Sc, C, q, p, v, dP.max(axis=2)
-
-    Sc, C, q_abs, p_abs, v_abs, dmax = elec_calc(weights)
-
-    step_header("Limiares Absolutos por Critério")
-    st.dataframe(pd.DataFrame({"Critério": crits, "q": q_abs, "p": p_abs, "v": v_abs})
-                  .style.format({"q": "{:.5f}", "p": "{:.5f}", "v": "{:.5f}"}),
-                hide_index=True, use_container_width=True)
-
-    step_header("Matriz de Credibilidade S(a, b)")
-    st.dataframe(pd.DataFrame(Sc, index=alts, columns=alts).style.format("{:.5f}").background_gradient(cmap="RdYlGn"),
-                use_container_width=True)
-
-    step_header("Ranking por Dominância Líquida")
-    cutoff = st.slider("Limiar de corte λ:", 0.5, 0.95, 0.7, 0.05, key="elec_lam")
-    outrank = (Sc >= cutoff) & (np.eye(m) == 0)
-    net = outrank.sum(axis=1) - outrank.sum(axis=0)
-    rank = pd.Series(net).rank(ascending=False, method='min').astype(int).values
-    df_res = pd.DataFrame({"Alternativa": alts, "Sobreclassifica": outrank.sum(axis=1),
-                           "Sobreclassificada por": outrank.sum(axis=0),
-                           "Dominância líquida": net, "Ranking": rank}).sort_values("Ranking")
-    st.dataframe(df_res.style.background_gradient(cmap="RdYlGn", subset=["Dominância líquida"]),
-                hide_index=True, use_container_width=True)
-    best = df_res.iloc[0]["Alternativa"]
-    st.markdown(f'<div class="result-box">🏆 Melhor segundo ELECTRE III: <b>{best}</b></div>', unsafe_allow_html=True)
-    store_result("ELECTRE III", net, rank, True)
-
-    def elec_score_fn(w):
-        Sc2, *_ = elec_calc(w)
-        out = (Sc2 >= cutoff) & (np.eye(m) == 0)
-        return out.sum(axis=1) - out.sum(axis=0)
-    render_sensitivity(elec_score_fn, alts, crits, weights, True, "elec")
-
-
-# =============================================================================
-# TAB 9: MAUT
-# =============================================================================
-with tabs[9]:
-    st.header("💡 MAUT")
-    purpose_box("Converte valores em <b>utilidade [0,1]</b> via função (Linear, Exp, Potência) e agrega.")
-    theory_box("Teoria (Keeney & Raiffa, 1976)", """<p>U_i = Σ w_j · u_j(x_ij).</p>""")
-
-    if not check_valid_input(): st.stop()
-    matrix, alts, crits, types = get_decision_matrix()
-    weights = get_active_weights()
-    show_active_weights_banner()
-
-    func = st.radio("Função de utilidade:", ["Linear", "Exponencial (k=2)", "Potência (p=0.5, côncava)", "Potência (p=2, convexa)"],
-                    horizontal=True, key="maut_func")
-
-    def maut_calc(W):
-        U0 = normalize_minmax(matrix, types)
-        if func == "Linear": U = U0
-        elif func.startswith("Exp"): U = (1 - np.exp(-2 * U0)) / (1 - np.exp(-2))
-        elif func.startswith("Potência (p=0.5"): U = U0 ** 0.5
-        else: U = U0 ** 2
-        return (U * W).sum(axis=1), U
-
-    S, U = maut_calc(weights)
-
-    step_header("Utilidades Parciais u_j(x_ij)")
-    st.dataframe(pd.DataFrame(U, index=alts, columns=crits).style.format("{:.5f}"), use_container_width=True)
-
-    step_header("Utilidade Global U_i")
-    st.latex(r"U_i = \sum_j w_j \cdot u_j(x_{ij})")
-    rank = pd.Series(S).rank(ascending=False, method='min').astype(int).values
-    df_res = pd.DataFrame({"Alternativa": alts, "U_i": S, "% do máx": S / S.max() * 100 if S.max() > 0 else S, "Ranking": rank}).sort_values("Ranking")
-    st.dataframe(df_res.style.format({"U_i": "{:.5f}", "% do máx": "{:.1f}%"})
-                  .background_gradient(cmap="RdYlGn", subset=["U_i"]),
-                hide_index=True, use_container_width=True)
-    best = df_res.iloc[0]["Alternativa"]
-    st.markdown(f'<div class="result-box">🏆 Melhor segundo MAUT: <b>{best}</b> (U = {df_res.iloc[0]["U_i"]:.5f})</div>', unsafe_allow_html=True)
-    store_result("MAUT", S, rank, True)
-
-    render_sensitivity(lambda w: maut_calc(w)[0], alts, crits, weights, True, "maut")
-
-
-# =============================================================================
-# TAB 10: DEMATEL
-# =============================================================================
-with tabs[10]:
-    st.header("🌐 DEMATEL")
-    purpose_box("Analisa <b>relações causa-efeito</b> entre critérios e ajusta pesos.")
-    theory_box("Teoria (Gabus & Fontela, 1972)", """<p>Modela relações causa-efeito.</p>""")
-
-    if not check_valid_input(): st.stop()
-    matrix, alts, crits, types = get_decision_matrix()
-    weights = get_active_weights()
-    show_active_weights_banner()
-    n = len(crits)
-
-    def dem_calc(W):
-        try:
-            Z = np.abs(np.corrcoef(matrix.T)); Z = np.nan_to_num(Z); np.fill_diagonal(Z, 0)
-        except Exception: Z = np.zeros((n, n))
-        s = max(Z.sum(axis=1).max(), Z.sum(axis=0).max(), 1e-9); X = Z / s
-        try: T = X @ np.linalg.inv(np.eye(n) - X)
-        except Exception: T = np.eye(n)
-        R = T.sum(axis=1); C = T.sum(axis=0)
-        prom = R + C; rel = R - C
-        if prom.sum() > 0:
-            Wa = W * prom; Wa = Wa / Wa.sum()
-        else: Wa = W
-        U = normalize_minmax(matrix, types); S = (U * Wa).sum(axis=1)
-        return S, T, R, C, prom, rel, Wa
-
-    S, T, R_v, C_v, prom, rel, Wa = dem_calc(weights)
-
-    step_header("Matriz Total T = X(I - X)⁻¹")
-    st.dataframe(pd.DataFrame(T, index=crits, columns=crits).style.format("{:.5f}").background_gradient(cmap="Blues"),
-                use_container_width=True)
-
-    step_header("R+C (Proeminência) e R−C (Causa/Efeito)")
-    df_rc = pd.DataFrame({"Critério": crits, "R": R_v, "C": C_v, "R+C": prom, "R-C": rel,
-                          "Tipo": ["🎯 Causa" if r > 0 else "📥 Efeito" for r in rel]})
-    st.dataframe(df_rc.style.format({"R": "{:.5f}", "C": "{:.5f}", "R+C": "{:.5f}", "R-C": "{:.5f}"}),
-                hide_index=True, use_container_width=True)
-
-    fig = go.Figure(go.Scatter(x=prom, y=rel, mode="markers+text", text=crits, textposition="top center",
-                                marker=dict(size=14, color=rel, colorscale="RdBu", showscale=True, colorbar=dict(title="R-C"))))
-    fig.add_hline(y=0, line_dash="dash", line_color="grey")
-    fig.update_layout(title="Diagrama Causa-Efeito DEMATEL",
-                      xaxis_title="Proeminência (R+C)", yaxis_title="Relação (R-C)", height=400)
-    st.plotly_chart(fig, use_container_width=True)
-
-    step_header("Ranking com Pesos Ajustados")
-    rank = pd.Series(S).rank(ascending=False, method='min').astype(int).values
-    df_res = pd.DataFrame({"Alternativa": alts, "Score": S, "Ranking": rank}).sort_values("Ranking")
-    st.dataframe(df_res.style.format({"Score": "{:.5f}"}).background_gradient(cmap="RdYlGn", subset=["Score"]),
-                hide_index=True, use_container_width=True)
-    best = df_res.iloc[0]["Alternativa"]
-    st.markdown(f'<div class="result-box">🏆 Melhor segundo DEMATEL: <b>{best}</b></div>', unsafe_allow_html=True)
-    store_result("DEMATEL", S, rank, True)
-
-    render_sensitivity(lambda w: dem_calc(w)[0], alts, crits, weights, True, "dem")
-
-
-# =============================================================================
-# TAB 11: FUZZY TOPSIS
-# =============================================================================
-with tabs[11]:
-    st.header("🌫️ Fuzzy TOPSIS")
-    purpose_box("TOPSIS com <b>números fuzzy triangulares</b>.")
-    theory_box("Teoria (Chen, 2000)", """<p>TOPSIS com TFN. Distância pelo método do vértice.</p>""")
-
-    if not check_valid_input(): st.stop()
-    matrix, alts, crits, types = get_decision_matrix()
-    weights = get_active_weights()
-    show_active_weights_banner()
-
-    spread = st.slider("Spread fuzzy (% do valor):", 5, 40, 15, 5, key="ft_spread")
-
-    def ftopsis_calc(W, s_pct=15):
-        s = s_pct / 100.0
-        L = matrix * (1 - s); M = matrix.copy(); U_ = matrix * (1 + s)
-        nc = matrix.shape[1]
-        Ln = np.zeros_like(L); Mn = np.zeros_like(M); Un = np.zeros_like(U_)
-        for j in range(nc):
-            if types[j] == "max":
-                d = max(U_[:, j].max(), 1e-9)
-                Ln[:, j] = L[:, j] / d; Mn[:, j] = M[:, j] / d; Un[:, j] = U_[:, j] / d
-            else:
-                num = max(L[:, j].min(), 1e-9)
-                Ln[:, j] = num / np.where(U_[:, j] == 0, 1e-9, U_[:, j])
-                Mn[:, j] = num / np.where(M[:, j] == 0, 1e-9, M[:, j])
-                Un[:, j] = num / np.where(L[:, j] == 0, 1e-9, L[:, j])
-        Lw, Mw, Uw = Ln * W, Mn * W, Un * W
-        fpis = np.array([Uw[:, j].max() for j in range(nc)])
-        fnis = np.array([Lw[:, j].min() for j in range(nc)])
-        def vd(a, b, c, t): return np.sqrt(((a-t)**2 + (b-t)**2 + (c-t)**2) / 3.0)
-        Dp = np.zeros(len(alts)); Dn = np.zeros(len(alts))
-        for i in range(len(alts)):
-            for j in range(nc):
-                Dp[i] += vd(Lw[i, j], Mw[i, j], Uw[i, j], fpis[j])
-                Dn[i] += vd(Lw[i, j], Mw[i, j], Uw[i, j], fnis[j])
-        den = np.where(Dp + Dn == 0, 1e-9, Dp + Dn)
-        return Dn / den, Dp, Dn
-
-    CC, Dp, Dn = ftopsis_calc(weights, spread)
-
-    step_header("CC* e Ranking")
-    st.latex(r"CC_i = D_i^- / (D_i^+ + D_i^-)")
-    rank = pd.Series(CC).rank(ascending=False, method='min').astype(int).values
-    df_res = pd.DataFrame({"Alternativa": alts, "D⁺": Dp, "D⁻": Dn, "CC*": CC, "Ranking": rank}).sort_values("Ranking")
-    st.dataframe(df_res.style.format({"D⁺": "{:.5f}", "D⁻": "{:.5f}", "CC*": "{:.5f}"})
-                  .background_gradient(cmap="RdYlGn", subset=["CC*"]),
-                hide_index=True, use_container_width=True)
-    best = df_res.iloc[0]["Alternativa"]
-    st.markdown(f'<div class="result-box">🏆 Melhor segundo Fuzzy TOPSIS: <b>{best}</b> (CC* = {df_res.iloc[0]["CC*"]:.5f})</div>', unsafe_allow_html=True)
-    store_result("Fuzzy TOPSIS", CC, rank, True)
-
-    render_sensitivity(lambda w: ftopsis_calc(w, spread)[0], alts, crits, weights, True, "ft")
-
-
-# =============================================================================
-# TAB 12: FUZZY AHP
-# =============================================================================
-with tabs[12]:
-    st.header("🧮 Fuzzy AHP")
-    purpose_box("AHP com <b>pesos fuzzy</b> e defuzzificação por centro de área.")
-    theory_box("Teoria (Chang, 1996)", """<p>AHP com TFN nos pesos.</p>""")
-
-    if not check_valid_input(): st.stop()
-    matrix, alts, crits, types = get_decision_matrix()
-    weights = get_active_weights()
-    show_active_weights_banner()
-
-    fs = st.slider("Spread fuzzy dos pesos (%):", 5, 40, 20, 5, key="fa_spread")
-
-    def fahp_calc(W, s_pct=20):
-        s = s_pct / 100.0; L = W * (1 - s); M = W.copy(); U_ = W * (1 + s)
-        Wc = (L + M + U_) / 3; Wc = Wc / Wc.sum()
-        Um = normalize_minmax(matrix, types)
-        return (Um * Wc).sum(axis=1), Wc, L, M, U_
-
-    S, Wc, L, M, U_ = fahp_calc(weights, fs)
-
-    step_header("TFN dos pesos")
-    st.dataframe(pd.DataFrame({"Critério": crits, "l": L, "m": M, "u": U_})
-                  .style.format({"l": "{:.5f}", "m": "{:.5f}", "u": "{:.5f}"}),
-                hide_index=True, use_container_width=True)
-
-    step_header("Defuzzificação")
-    st.dataframe(pd.DataFrame({"Critério": crits, "w crisp": Wc, "%": [f"{x*100:.2f}%" for x in Wc]})
-                  .style.format({"w crisp": "{:.5f}"}),
-                hide_index=True, use_container_width=True)
-
-    step_header("Ranking")
-    rank = pd.Series(S).rank(ascending=False, method='min').astype(int).values
-    df_res = pd.DataFrame({"Alternativa": alts, "Score": S, "Ranking": rank}).sort_values("Ranking")
-    st.dataframe(df_res.style.format({"Score": "{:.5f}"}).background_gradient(cmap="RdYlGn", subset=["Score"]),
-                hide_index=True, use_container_width=True)
-    best = df_res.iloc[0]["Alternativa"]
-    st.markdown(f'<div class="result-box">🏆 Melhor segundo Fuzzy AHP: <b>{best}</b></div>', unsafe_allow_html=True)
-    store_result("Fuzzy AHP", S, rank, True)
-
-    render_sensitivity(lambda w: fahp_calc(w, fs)[0], alts, crits, weights, True, "fa")
-
-# =============================================================================
-# TAB 13: GRÁFICOS
-# =============================================================================
-with tabs[13]:
-    st.header("📊 Gráficos para Decisão")
-    purpose_box("<b>5 visualizações Plotly</b> para apoiar a decisão.")
-
-    if not check_valid_input(): st.stop()
-    matrix, alts, crits, types = get_decision_matrix()
-    weights = get_active_weights()
-
-    if not st.session_state.all_results:
-        st.warning("⚠️ Nenhum modelo executado. Vá às abas de modelo primeiro.")
-        st.stop()
-
-    methods = list(st.session_state.all_results.keys())
-
-    st.subheader("🗺️ Heatmap de Rankings por Método")
-    rank_data = {"Alternativa": alts}
-    for m in methods:
-        rank_data[m] = st.session_state.all_results[m]["ranking"]
-    df_ranks = pd.DataFrame(rank_data).set_index("Alternativa")
-
-    fig_heat = px.imshow(
-        df_ranks.values, x=methods, y=alts,
-        color_continuous_scale="RdYlGn_r", aspect="auto", text_auto=True,
-        labels=dict(x="Modelo", y="Alternativa", color="Ranking"),
-        title=f"Rankings das {len(alts)} alternativas em {len(methods)} modelos"
-    )
-    fig_heat.update_layout(height=max(360, 28 * len(alts)), margin=dict(l=10, r=10, t=50, b=10))
-    fig_heat.update_traces(textfont=dict(size=14, color="black"))
-    st.plotly_chart(fig_heat, use_container_width=True)
-
-    st.subheader("🎯 Radar — Perfil Multicritério do Top-3")
-    avg_rank = df_ranks.mean(axis=1)
-    top3_alts = avg_rank.sort_values().head(3).index.tolist()
-    norm = normalize_minmax(matrix, types)
-    norm_df = pd.DataFrame(norm, index=alts, columns=crits)
-
-    fig_radar = go.Figure()
-    colors = ["#FFD700", "#C0C0C0", "#CD7F32"]
-    medals = ["🥇 1º", "🥈 2º", "🥉 3º"]
-    for i, alt in enumerate(top3_alts):
-        vals = list(norm_df.loc[alt]) + [norm_df.loc[alt].iloc[0]]
-        cats = crits + [crits[0]]
-        fig_radar.add_trace(go.Scatterpolar(
-            r=vals, theta=cats, fill="toself",
-            name=f"{medals[i]} {alt}",
-            line=dict(color=colors[i], width=2), opacity=0.6
-        ))
-    fig_radar.update_layout(
-        polar=dict(radialaxis=dict(visible=True, range=[0, 1])),
-        height=480, showlegend=True, title="Top-3 — perfil normalizado"
-    )
-    st.plotly_chart(fig_radar, use_container_width=True)
-
-    st.subheader("🌪️ Tornado de Sensibilidade — Top-1")
-    ref_method = "TOPSIS" if "TOPSIS" in st.session_state.all_results else methods[0]
-    top1_idx = alts.index(top3_alts[0])
-    base_scores = st.session_state.all_results[ref_method]["scores"]
-    base_score_top1 = base_scores[top1_idx]
-    sens_pct = st.session_state.sensitivity_pct
-
-    tornado_data = []
-    for j, crit in enumerate(crits):
-        for sign, factor in [("+", 1 + sens_pct/100), ("-", 1 - sens_pct/100)]:
-            new_w = weights.copy()
-            new_w[j] = weights[j] * factor
-            new_w = new_w / new_w.sum()
-            R = normalize_vector(matrix); V = R * new_w
-            Ap = np.array([V[:, k].max() if types[k] == "max" else V[:, k].min() for k in range(len(crits))])
-            An = np.array([V[:, k].min() if types[k] == "max" else V[:, k].max() for k in range(len(crits))])
-            Dp = np.sqrt(((V - Ap) ** 2).sum(axis=1)); Dn = np.sqrt(((V - An) ** 2).sum(axis=1))
-            den = np.where(Dp + Dn == 0, 1e-9, Dp + Dn)
-            new_cc = Dn / den
-            delta = new_cc[top1_idx] - base_score_top1
-            tornado_data.append({"Critério": crit, "Direcção": f"{sign}{sens_pct}%", "Δ Score": delta})
-    df_tornado = pd.DataFrame(tornado_data)
-
-    fig_tornado = px.bar(df_tornado, x="Δ Score", y="Critério", color="Direcção",
-                         orientation="h", barmode="group",
-                         color_discrete_map={f"+{sens_pct}%": "#1F77B4", f"-{sens_pct}%": "#FF7F0E"},
-                         title=f"Tornado — sensibilidade do score de {top3_alts[0]} ({ref_method})")
-    fig_tornado.update_layout(height=max(280, 50 * len(crits)), margin=dict(l=10, r=10, t=50, b=10))
-    fig_tornado.add_vline(x=0, line_dash="dash", line_color="grey")
-    st.plotly_chart(fig_tornado, use_container_width=True)
-
-    st.subheader("📊 Scores Normalizados por Modelo")
-    score_data = {"Alternativa": alts}
-    for m in methods:
-        sc = st.session_state.all_results[m]["scores"]
-        if sc.max() > sc.min():
-            score_data[m] = (sc - sc.min()) / (sc.max() - sc.min())
-        else:
-            score_data[m] = np.zeros_like(sc)
-    df_sc = pd.DataFrame(score_data)
-    df_long = df_sc.melt(id_vars="Alternativa", var_name="Modelo", value_name="Score Normalizado")
-    fig_sc = px.bar(df_long, x="Alternativa", y="Score Normalizado", color="Modelo",
-                    barmode="group", title="Scores normalizados [0,1] por modelo")
-    fig_sc.update_layout(height=420, margin=dict(l=10, r=10, t=50, b=10))
-    st.plotly_chart(fig_sc, use_container_width=True)
-
-    st.subheader("🎯 Convergência Top-3")
-    top3_count = (df_ranks <= 3).sum(axis=1).sort_values(ascending=False)
-    fig_conv = px.bar(x=top3_count.index, y=top3_count.values,
-                      labels={"x": "Alternativa", "y": f"N.º de modelos com Top-3 (de {len(methods)})"},
-                      color=top3_count.values, color_continuous_scale="Viridis",
-                      title="Convergência Top-3 — análise de robustez")
-    fig_conv.update_layout(height=380, showlegend=False)
-    st.plotly_chart(fig_conv, use_container_width=True)
-
-
-# =============================================================================
 # TAB 14: DASHBOARD CONSOLIDADO
 # =============================================================================
-with tabs[14]:
-    st.header("🏆 Dashboard Consolidado")
-    purpose_box("Combinar rankings via <b>Borda invertido</b> (média de posições).")
-
+# =============================================================================
+# TAB 6: DASHBOARD CONSOLIDADO (layout estilo MCG)
+# =============================================================================
+with tabs[6]:
     if not check_valid_input(): st.stop()
     matrix, alts, crits, types = get_decision_matrix()
     weights = get_active_weights()
-    show_active_weights_banner()
 
     if not st.session_state.all_results:
-        st.warning("⚠️ Execute pelo menos um modelo.")
+        st.warning("⚠️ Execute pelo menos um modelo (AHP, TOPSIS, PROMETHEE II ou COPRAS) antes de abrir o Dashboard.")
         st.stop()
 
     methods = list(st.session_state.all_results.keys())
+    # ordem canónica preferida no dashboard
+    ordered = [m for m in ["TOPSIS", "PROMETHEE II", "AHP", "COPRAS"] if m in methods]
+    other = [m for m in methods if m not in ordered]
+    methods = ordered + other
+
+    # ===== HEADER BAR (azul escuro estilo MCG) =====
+    st.markdown(
+        """<div style="background: linear-gradient(90deg, #1F4E78 0%, #2E75B6 100%);
+        color: white; padding: 14px 22px; border-radius: 8px; margin-bottom: 14px;
+        display: flex; justify-content: space-between; align-items: center;">
+          <div>
+            <span style="font-size: 20px; font-weight: 700;">📊 MCDM Dashboard</span>
+            <span style="font-size: 16px; opacity: 0.85;"> | Priorização de Alternativas Multicritério</span>
+          </div>
+          <div style="font-size: 12px; opacity: 0.85; text-align: right;">
+            ISEL · MEGI · Modelos de Decisão
+          </div>
+        </div>""",
+        unsafe_allow_html=True
+    )
+
+    # ===== RANKING CONSOLIDADO (DataFrame base) =====
     df_dash = pd.DataFrame({"Alternativa": alts})
     for m in methods:
         df_dash[m] = st.session_state.all_results[m]["ranking"]
     df_dash["Posição Média"] = df_dash[methods].mean(axis=1).round(2)
     df_dash["Top-3 em N modelos"] = (df_dash[methods] <= 3).sum(axis=1)
     df_dash["Ranking Final"] = pd.Series(df_dash["Posição Média"]).rank(ascending=True, method='min').astype(int).values
-    df_dash = df_dash.sort_values("Ranking Final")
+    df_dash = df_dash.sort_values("Ranking Final").reset_index(drop=True)
 
-    st.dataframe(df_dash.style.background_gradient(cmap="RdYlGn_r", subset=methods + ["Posição Média", "Ranking Final"]),
-                hide_index=True, use_container_width=True)
-
-    st.subheader("🥇 Recomendação Final — Top-3")
     top3 = df_dash.head(3)["Alternativa"].tolist()
-    c1, c2, c3 = st.columns(3)
-    medals = ["🥇 1º lugar", "🥈 2º lugar", "🥉 3º lugar"]
-    for k, (col, medal) in enumerate(zip([c1, c2, c3], medals)):
-        if k < len(top3):
-            col.metric(medal, top3[k], delta=f"Pos média: {df_dash.iloc[k]['Posição Média']}")
+    top1 = top3[0] if top3 else "—"
 
-    total_top3 = sum(df_dash.head(3)["Top-3 em N modelos"].values)
-    max_conv = 3 * len(methods)
-    conv_pct = (total_top3 / max_conv * 100) if max_conv else 0
-    st.info(f"**Convergência inter-modelo**: {total_top3}/{max_conv} ({conv_pct:.0f}%)\n\n"
-            f"Modelos avaliados: {', '.join(methods)}")
+    # ============================================================================
+    # LINHA 1: Filtros · Ranking · Radar · Sensibilidade
+    # ============================================================================
+    col_filt, col_rank, col_radar, col_sens = st.columns([1.1, 2.0, 1.7, 1.7])
 
-
-# =============================================================================
-# TAB 15: VISTA 360°
-# =============================================================================
-with tabs[15]:
-    st.header("🎛️ Vista 360° — Dashboard Executivo")
-    purpose_box("<b>Vista consolidada one-page</b> estilo Figura 1 do enunciado.")
-
-    if not check_valid_input(): st.stop()
-    matrix, alts, crits, types = get_decision_matrix()
-    weights = get_active_weights()
-
-    if not st.session_state.all_results:
-        st.warning("⚠️ Execute primeiro os modelos.")
-        st.stop()
-
-    methods = list(st.session_state.all_results.keys())
-
-    st.markdown("---")
-    col_filt, col_rank, col_radar = st.columns([1.2, 2.2, 2.0])
-
+    # -------- Coluna 1: FILTROS & PARÂMETROS --------
     with col_filt:
-        st.markdown("#### 🔧 Filtros & Parâmetros")
-        focus_model = st.selectbox("Modelo em destaque:", methods, key="v360_model")
-        focus_crit = st.selectbox("Critério para sensibilidade:", crits, key="v360_crit")
-        focus_alt = st.selectbox("Alternativa para destaque (radar):", alts, key="v360_alt")
-        sens_pct_v360 = st.session_state.sensitivity_pct
-        st.metric("Variação SA (aba Dados)", f"±{sens_pct_v360}%")
-        st.metric("Modelos activos", len(methods))
-
-    with col_rank:
-        st.markdown("#### 🏆 Ranking Consolidado")
-        df_consol = pd.DataFrame({"Alternativa": alts})
-        for m in methods:
-            df_consol[m] = st.session_state.all_results[m]["ranking"]
-        df_consol["Pos. Média"] = df_consol[methods].mean(axis=1).round(2)
-        df_consol["Final"] = pd.Series(df_consol["Pos. Média"]).rank(ascending=True, method='min').astype(int).values
-        df_consol = df_consol.sort_values("Final").reset_index(drop=True)
-        df_consol["Top-3"] = df_consol["Final"].apply(lambda r: "🥇" if r == 1 else ("🥈" if r == 2 else ("🥉" if r == 3 else "")))
-        st.dataframe(
-            df_consol.style.background_gradient(cmap="RdYlGn_r", subset=methods + ["Pos. Média", "Final"]),
-            hide_index=True, use_container_width=True, height=min(360, 50 + 35 * len(alts))
+        st.markdown("##### 🔧 Filtros & Parâmetros")
+        st.markdown("**Modelo destacado:**")
+        focus_model = st.radio(
+            "", methods,
+            key="dash_focus_model", label_visibility="collapsed"
         )
+        st.markdown("**Critério para sensibilidade:**")
+        focus_crit = st.selectbox(
+            "", crits, key="dash_focus_crit", label_visibility="collapsed"
+        )
+        st.markdown("**Alternativa para radar:**")
+        focus_alt = st.selectbox(
+            "", alts, key="dash_focus_alt", label_visibility="collapsed"
+        )
+        st.markdown(f"**Variação SA:** ±{st.session_state.sensitivity_pct}%")
+        st.caption("(ajustável na aba 📋 Dados)")
 
+    # -------- Coluna 2: RANKING CONSOLIDADO --------
+    with col_rank:
+        st.markdown("##### 🏆 Ranking Consolidado das Alternativas")
+
+        def medalha(r):
+            return "🥇" if r == 1 else ("🥈" if r == 2 else ("🥉" if r == 3 else ""))
+
+        display = df_dash.copy()
+        # CC* score for top model display
+        scores_top = st.session_state.all_results[focus_model]["scores"]
+        sc_by_alt = dict(zip(alts, scores_top))
+        display["Score (modelo destacado)"] = display["Alternativa"].map(sc_by_alt)
+        display["Medalha"] = display["Ranking Final"].apply(medalha)
+
+        # tabela compacta
+        compact = display[["Medalha", "Alternativa"] + methods + ["Posição Média", "Top-3 em N modelos", "Ranking Final"]]
+        st.dataframe(
+            compact.style
+                   .background_gradient(cmap="RdYlGn_r", subset=methods + ["Posição Média", "Ranking Final"])
+                   .format({"Posição Média": "{:.2f}"}),
+            hide_index=True, use_container_width=True,
+            height=min(380, 60 + 35 * len(alts))
+        )
+        st.caption(f"Modelo destacado: **{focus_model}** · Score Top-1 = {sc_by_alt.get(top1, 0):.5f}")
+
+    # -------- Coluna 3: RADAR PERFIL MULTICRITÉRIO --------
     with col_radar:
-        st.markdown(f"#### 🎯 Perfil Multicritério")
-        top3_v360 = df_consol.head(3)["Alternativa"].tolist()
+        st.markdown(f"##### 🎯 Perfil Multicritério")
         norm = normalize_minmax(matrix, types)
         norm_df = pd.DataFrame(norm, index=alts, columns=crits)
 
         fig_radar = go.Figure()
-        colors = ["#FFD700", "#C0C0C0", "#CD7F32"]
-        for i, alt in enumerate(top3_v360):
+        # top-3
+        colors_radar = ["#FFD700", "#C0C0C0", "#CD7F32"]
+        labels_radar = ["🥇 1º", "🥈 2º", "🥉 3º"]
+        for i, alt in enumerate(top3):
             vals = list(norm_df.loc[alt]) + [norm_df.loc[alt].iloc[0]]
             fig_radar.add_trace(go.Scatterpolar(
-                r=vals, theta=crits + [crits[0]], fill="toself", name=alt,
-                line=dict(color=colors[i], width=2), opacity=0.5
+                r=vals, theta=crits + [crits[0]], fill="toself",
+                name=f"{labels_radar[i]} {alt}",
+                line=dict(color=colors_radar[i], width=2), opacity=0.55
             ))
-        if focus_alt not in top3_v360:
+        # focus alt (se não estiver no top-3)
+        if focus_alt not in top3:
             vals = list(norm_df.loc[focus_alt]) + [norm_df.loc[focus_alt].iloc[0]]
             fig_radar.add_trace(go.Scatterpolar(
-                r=vals, theta=crits + [crits[0]], fill="toself", name=f"⭐ {focus_alt}",
+                r=vals, theta=crits + [crits[0]], fill="toself",
+                name=f"⭐ {focus_alt}",
                 line=dict(color="#9C27B0", width=3, dash="dot")
             ))
         fig_radar.update_layout(
             polar=dict(radialaxis=dict(visible=True, range=[0, 1], showticklabels=False)),
-            height=340, showlegend=True, margin=dict(l=10, r=10, t=10, b=10)
+            height=320, margin=dict(l=10, r=10, t=10, b=10),
+            showlegend=True, legend=dict(font=dict(size=10), orientation="h", y=-0.15)
         )
         st.plotly_chart(fig_radar, use_container_width=True)
 
-    st.markdown("---")
-    st.markdown("#### 📊 Scores por Modelo (top-4)")
-    priority_methods = ["TOPSIS", "PROMETHEE II", "AHP", "COPRAS"]
-    display_methods = [m for m in priority_methods if m in methods]
-    if len(display_methods) < 4:
-        for m in methods:
-            if m not in display_methods:
-                display_methods.append(m)
-            if len(display_methods) >= 4:
-                break
-
-    cols = st.columns(min(4, len(display_methods)))
-    for i, m in enumerate(display_methods[:4]):
-        with cols[i]:
-            sc = st.session_state.all_results[m]["scores"]
-            df_sc = pd.DataFrame({"Alt": alts, "Score": sc}).sort_values("Score", ascending=False)
-            colors_bar = ["#FFD700" if k == 0 else "#C0C0C0" if k == 1 else "#CD7F32" if k == 2 else "#90CAF9"
-                          for k in range(len(df_sc))]
-            fig = go.Figure(go.Bar(
-                x=df_sc["Score"], y=df_sc["Alt"], orientation="h",
-                marker=dict(color=colors_bar),
-                text=[f"{x:.3f}" for x in df_sc["Score"]], textposition="outside"
-            ))
-            fig.update_layout(
-                title=dict(text=f"<b>{m}</b>", font=dict(size=14)),
-                height=max(220, 28 * len(alts)),
-                margin=dict(l=10, r=10, t=40, b=10),
-                xaxis_title="", yaxis_title="", showlegend=False
-            )
-            fig.update_yaxes(autorange="reversed")
-            st.plotly_chart(fig, use_container_width=True)
-
-    st.markdown("---")
-    col_sa, col_reco = st.columns([1.4, 1.0])
-
-    with col_sa:
-        st.markdown(f"#### 🌪️ Sensibilidade — impacto de {focus_crit} no {focus_model}")
+    # -------- Coluna 4: SENSIBILIDADE — Variação de Pesos do critério escolhido --------
+    with col_sens:
+        st.markdown(f"##### 🌪️ Sensibilidade — Variação de {focus_crit}")
         focus_crit_idx = crits.index(focus_crit)
-        def quick_topsis(W):
-            R = normalize_vector(matrix); V = R * W
-            Ap = np.array([V[:, j].max() if types[j] == "max" else V[:, j].min() for j in range(len(crits))])
-            An = np.array([V[:, j].min() if types[j] == "max" else V[:, j].max() for j in range(len(crits))])
-            Dp = np.sqrt(((V - Ap) ** 2).sum(axis=1)); Dn = np.sqrt(((V - An) ** 2).sum(axis=1))
-            return Dn / np.where(Dp + Dn == 0, 1e-9, Dp + Dn)
-        base = quick_topsis(weights)
+        sens_pct = st.session_state.sensitivity_pct
 
-        deltas = []
-        for sign, fac in [("+", 1 + sens_pct_v360/100), ("-", 1 - sens_pct_v360/100)]:
-            nw = weights.copy(); nw[focus_crit_idx] = weights[focus_crit_idx] * fac
-            other_sum_old = weights.sum() - weights[focus_crit_idx]
-            other_sum_new = 1 - nw[focus_crit_idx]
-            if other_sum_old > 0 and other_sum_new > 0:
+        # usar modelo focus
+        if focus_model == "TOPSIS":
+            def quick_score(W):
+                R = normalize_vector(matrix); V = R * W
+                Ap = np.array([V[:, j].max() if types[j] == "max" else V[:, j].min() for j in range(len(crits))])
+                An = np.array([V[:, j].min() if types[j] == "max" else V[:, j].max() for j in range(len(crits))])
+                Dp = np.sqrt(((V - Ap) ** 2).sum(axis=1)); Dn = np.sqrt(((V - An) ** 2).sum(axis=1))
+                return Dn / np.where(Dp + Dn == 0, 1e-9, Dp + Dn)
+        elif focus_model == "COPRAS":
+            def quick_score(W):
+                Xn = normalize_sum(matrix); V = Xn * W
+                bi = [j for j, t in enumerate(types) if t == "max"]
+                ci = [j for j, t in enumerate(types) if t == "min"]
+                Sp = V[:, bi].sum(axis=1) if bi else np.zeros(len(alts))
+                Sm = V[:, ci].sum(axis=1) if ci else np.zeros(len(alts))
+                if Sm.sum() > 0 and (Sm > 0).all():
+                    sm = Sm.min(); ssm = Sm.sum(); si = (sm / Sm).sum()
+                    Q = Sp + (sm * ssm) / (Sm * si) if si > 0 else Sp
+                else:
+                    Q = Sp
+                return Q
+        else:  # AHP ou PROMETHEE — fallback aditivo simples
+            def quick_score(W):
+                U = normalize_minmax(matrix, types)
+                return (U * W).sum(axis=1)
+
+        base = quick_score(weights)
+        nw_p = weights.copy()
+        nw_p[focus_crit_idx] = weights[focus_crit_idx] * (1 + sens_pct/100)
+        other_old = weights.sum() - weights[focus_crit_idx]
+        other_new = 1 - nw_p[focus_crit_idx]
+        if other_old > 0 and other_new > 0:
+            for k in range(len(nw_p)):
+                if k != focus_crit_idx:
+                    nw_p[k] = weights[k] * (other_new / other_old)
+        nw_p = nw_p / nw_p.sum()
+        sc_p = quick_score(nw_p)
+
+        # ordenar por score positivo
+        df_s = pd.DataFrame({"Alt": alts, "Score": sc_p}).sort_values("Score", ascending=False)
+        colors_s = ["#1F4E78" if a in top3 else "#5B9BD5" for a in df_s["Alt"]]
+        fig_s = go.Figure(go.Bar(
+            x=df_s["Score"], y=df_s["Alt"], orientation="h",
+            marker=dict(color=colors_s),
+            text=[f"{v:.3f}" for v in df_s["Score"]], textposition="outside",
+        ))
+        fig_s.update_layout(
+            height=320, margin=dict(l=10, r=40, t=10, b=10),
+            xaxis_title=f"Score com peso de {focus_crit} +{sens_pct}%",
+            yaxis=dict(autorange="reversed"), showlegend=False,
+        )
+        st.plotly_chart(fig_s, use_container_width=True)
+
+    st.markdown("---")
+
+    # ============================================================================
+    # LINHA 2: Gráficos por modelo (4 colunas)
+    # ============================================================================
+    st.markdown("##### 📈 Scores por Modelo")
+    cols_models = st.columns(len(methods))
+    for i, m in enumerate(methods):
+        with cols_models[i]:
+            sc = st.session_state.all_results[m]["scores"]
+            rk = st.session_state.all_results[m]["ranking"]
+            df_m = pd.DataFrame({"Alt": alts, "Score": sc, "Rank": rk}).sort_values("Rank")
+            colors_m = ["#1F4E78" if r <= 3 else ("#5B9BD5" if r <= 6 else "#F08080") for r in df_m["Rank"]]
+
+            # PROMETHEE: vermelho se score < 0
+            if m == "PROMETHEE II":
+                colors_m = ["#1F4E78" if v >= 0 else "#C00000" for v in df_m["Score"]]
+            fig_m = go.Figure(go.Bar(
+                x=df_m["Score"], y=df_m["Alt"], orientation="h",
+                marker=dict(color=colors_m),
+                text=[f"{v:+.3f}" if m == "PROMETHEE II" else f"{v:.3f}" for v in df_m["Score"]],
+                textposition="outside",
+            ))
+            label_x = {
+                "TOPSIS": "CC* (Proximidade)",
+                "PROMETHEE II": "φ líquido",
+                "AHP": "Score AHP",
+                "COPRAS": "Q_i"
+            }.get(m, "Score")
+            fig_m.update_layout(
+                title=dict(text=f"<b>{m}</b>", font=dict(size=13), x=0.5),
+                height=max(220, 28 * len(alts)),
+                margin=dict(l=10, r=40, t=40, b=10),
+                xaxis_title=label_x, yaxis=dict(autorange="reversed"),
+                showlegend=False,
+            )
+            if m == "PROMETHEE II":
+                fig_m.add_vline(x=0, line_dash="solid", line_color="#333", line_width=1)
+            st.plotly_chart(fig_m, use_container_width=True)
+
+    st.markdown("---")
+
+    # ============================================================================
+    # LINHA 3: Sensibilidade por critério (caixas) — Robustez do Top-1
+    # ============================================================================
+    st.markdown(f"##### 🎯 Análise de Sensibilidade por Critério (±{st.session_state.sensitivity_pct}%) — robustez do **{top1}**")
+
+    sens_pct = st.session_state.sensitivity_pct
+    # usar TOPSIS para a análise por critério (modelo de referência)
+    def topsis_for_sens(W):
+        R = normalize_vector(matrix); V = R * W
+        Ap = np.array([V[:, j].max() if types[j] == "max" else V[:, j].min() for j in range(len(crits))])
+        An = np.array([V[:, j].min() if types[j] == "max" else V[:, j].max() for j in range(len(crits))])
+        Dp = np.sqrt(((V - Ap) ** 2).sum(axis=1)); Dn = np.sqrt(((V - An) ** 2).sum(axis=1))
+        return Dn / np.where(Dp + Dn == 0, 1e-9, Dp + Dn)
+
+    base_sc = topsis_for_sens(weights)
+    base_rk_top1 = pd.Series(base_sc).rank(ascending=False, method='min').astype(int).values[alts.index(top1)]
+
+    crit_status = []
+    for j, crit in enumerate(crits):
+        inverteu = False
+        for f in [1 + sens_pct/100, 1 - sens_pct/100]:
+            nw = weights.copy()
+            nw[j] = weights[j] * f
+            os_old = weights.sum() - weights[j]
+            os_new = 1 - nw[j]
+            if os_old > 0 and os_new > 0:
                 for k in range(len(nw)):
-                    if k != focus_crit_idx:
-                        nw[k] = weights[k] * (other_sum_new / other_sum_old)
+                    if k != j:
+                        nw[k] = weights[k] * (os_new / os_old)
             nw = nw / nw.sum()
-            sc = quick_topsis(nw)
-            for i, alt in enumerate(alts):
-                deltas.append({"Alt": alt, "Cenário": f"{sign}{sens_pct_v360}%", "Δ Score": sc[i] - base[i]})
-        df_d = pd.DataFrame(deltas)
-        fig_tor = px.bar(df_d, x="Δ Score", y="Alt", color="Cenário",
-                          orientation="h", barmode="group",
-                          color_discrete_map={f"+{sens_pct_v360}%": "#1976D2", f"-{sens_pct_v360}%": "#F57C00"})
-        fig_tor.add_vline(x=0, line_dash="dash", line_color="grey")
-        fig_tor.update_layout(height=max(260, 32 * len(alts)), margin=dict(l=10, r=10, t=10, b=10),
-                              yaxis=dict(autorange="reversed"))
-        st.plotly_chart(fig_tor, use_container_width=True)
+            sc = topsis_for_sens(nw)
+            rk = pd.Series(sc).rank(ascending=False, method='min').astype(int).values
+            if rk[alts.index(top1)] != base_rk_top1:
+                inverteu = True; break
+        crit_status.append({"Critério": crit, "Inverteu": inverteu})
+
+    sens_cols = st.columns(len(crits))
+    for i, info in enumerate(crit_status):
+        with sens_cols[i]:
+            cor = "#C00000" if info["Inverteu"] else "#2E7D32"
+            label = "❌ Inverteu" if info["Inverteu"] else "✅ Sem inversão"
+            classif = "🔴 Sensível" if info["Inverteu"] else "🟢 Robusto"
+            st.markdown(
+                f"""<div style="background: white; border: 2px solid {cor}; border-radius: 8px;
+                padding: 10px 8px; text-align: center; min-height: 100px;">
+                  <div style="font-weight: 700; color: #1F4E78; font-size: 13px;">{info['Critério']} (±{sens_pct}%)</div>
+                  <div style="margin: 6px 0; color: {cor}; font-weight: 600; font-size: 12px;">{label}</div>
+                  <div style="font-size: 11px; color: {cor};">{classif}</div>
+                </div>""",
+                unsafe_allow_html=True
+            )
+
+    st.markdown("---")
+
+    # ============================================================================
+    # LINHA 4: Recomendação & Notas + Critérios/Pesos
+    # ============================================================================
+    col_reco, col_crit = st.columns([1.4, 1.0])
 
     with col_reco:
-        st.markdown("#### 🎯 Recomendações & Notas")
-        top3 = df_consol.head(3)["Alternativa"].tolist()
-        df_ranks_for_conv = df_consol[methods]
-        top3_count = (df_ranks_for_conv <= 3).sum(axis=1).values
-        conv_top1 = (top3_count[0] / len(methods) * 100) if methods else 0
-
-        if conv_top1 >= 70:
+        st.markdown("##### 🎯 Recomendação & Notas")
+        total_top3 = sum(df_dash.head(3)["Top-3 em N modelos"].values)
+        max_conv = 3 * len(methods)
+        conv_pct = (total_top3 / max_conv * 100) if max_conv else 0
+        if conv_pct >= 70:
             verdict_color = "#2e7d32"; verdict_label = "🟢 ALTA"
-        elif conv_top1 >= 40:
+        elif conv_pct >= 40:
             verdict_color = "#f57c00"; verdict_label = "🟡 MODERADA"
         else:
             verdict_color = "#c62828"; verdict_label = "🔴 BAIXA"
 
         st.markdown(
-            f"""<div style="background:linear-gradient(135deg, #1F4E78 0%, #2E75B6 100%);
-            color:white; padding:18px; border-radius:10px;">
-            <div style="font-size:11px; opacity:0.9; text-transform:uppercase;">TOP-3 MCDM</div>
-            <div style="font-size:18px; font-weight:700;">🥇 {top3[0] if len(top3) > 0 else '—'}</div>
-            <div style="font-size:14px; opacity:0.9;">🥈 {top3[1] if len(top3) > 1 else '—'} · 🥉 {top3[2] if len(top3) > 2 else '—'}</div>
+            f"""<div style="background: linear-gradient(135deg, #1F4E78 0%, #2E75B6 100%);
+            color: white; padding: 18px; border-radius: 10px;">
+              <div style="font-size: 11px; opacity: 0.9; text-transform: uppercase; letter-spacing: 1px;">TOP-3 MCDM</div>
+              <div style="font-size: 22px; font-weight: 700; margin-top: 4px;">🥇 {top3[0] if len(top3)>0 else '—'}</div>
+              <div style="font-size: 14px; opacity: 0.95;">
+                🥈 {top3[1] if len(top3)>1 else '—'} · 🥉 {top3[2] if len(top3)>2 else '—'}
+              </div>
             </div>""",
             unsafe_allow_html=True
         )
         st.markdown(
-            f"""<div style="background:{verdict_color}; color:white; padding:10px;
-            border-radius:6px; margin-top:8px; text-align:center; font-weight:600;">
-            Convergência {verdict_label}: {conv_top1:.0f}%
+            f"""<div style="background: {verdict_color}; color: white; padding: 10px;
+            border-radius: 6px; margin-top: 8px; text-align: center; font-weight: 600;">
+              Convergência {verdict_label}: {conv_pct:.0f}% ({total_top3}/{max_conv} aparições no Top-3)
             </div>""",
             unsafe_allow_html=True
         )
+        st.markdown(f"**Modelos avaliados ({len(methods)}):** {', '.join(methods)}")
+        sens_robust_count = sum(1 for s in crit_status if not s["Inverteu"])
+        st.markdown(
+            f"**Robustez (sensibilidade ±{sens_pct}%):** {sens_robust_count}/{len(crits)} critérios sem inversão de {top1}."
+        )
 
-        st.markdown(f"**Modelos avaliados ({len(methods)}):**")
-        st.write(", ".join(methods))
-
-        st.markdown("**Critérios + pesos activos:**")
+    with col_crit:
+        st.markdown("##### 📊 Critérios e Pesos Activos")
+        eng_src = "Manual" if not st.session_state.global_injection_on else f"Motor: {st.session_state.global_injection_engine}"
+        st.caption(f"Fonte: {eng_src}")
         df_cwp = pd.DataFrame({
-            "Crit.": crits, "Tipo": types, "Peso": [f"{w*100:.1f}%" for w in weights]
-        })
-        st.dataframe(df_cwp, hide_index=True, use_container_width=True)
+            "Crit.": crits, "Tipo": types,
+            "Peso": weights, "%": [f"{w*100:.2f}%" for w in weights]
+        }).sort_values("Peso", ascending=False)
+        st.dataframe(
+            df_cwp.style.format({"Peso": "{:.5f}"})
+                  .background_gradient(cmap="Blues", subset=["Peso"]),
+            hide_index=True, use_container_width=True
+        )
+
+
 
 # =============================================================================
-# TAB 16: RELATÓRIO TÉCNICO
+# TAB 7: RELATÓRIO TÉCNICO
 # =============================================================================
-with tabs[16]:
+with tabs[7]:
     st.header("📑 Relatório Técnico — Estrutura dos 7 Capítulos")
     purpose_box(
         "Gera <b>relatório técnico completo</b> cumprindo a estrutura do <b>Capítulo 4</b> do enunciado."
@@ -2515,18 +1969,21 @@ with tabs[16]:
     with st.expander("**🎛️ Capítulo 5 — Dashboard e Reutilizabilidade** (3-5 pp)", expanded=False):
         st.markdown(f"""
         ### Arquitectura
-        {len(methods)} modelos + 4 motores de pesos + AHP. Estrutura em 17 abas.
+        {len(methods)} modelo(s) MCDM (TOPSIS, PROMETHEE II, COPRAS) + AHP como motor de pesos.
+        Estrutura em 8 abas: 🏠 Início · 📋 Dados · 🔍 AHP · 🎯 TOPSIS · 📈 PROMETHEE II · 📊 COPRAS · 🏆 Dashboard · 📑 Relatório.
 
         ### Guia de Utilização
-        1. Aba 📋 Dados → escolher fonte (Demo/Manual/Quadros em bruto)
-        2. Aba 📋 Dados → ajustar critérios, matriz, motor de pesos e sensibilidade
-        3. Sidebar OU aba 📋 Dados (secção 2-bis) → escolher motor de pesos activo
-        4. Executar abas de modelos
-        5. Aba 🎛️ Vista 360° para vista executiva
-        6. Aba 📑 Relatório para descarregar
+        1. Aba 📋 Dados → escolher fonte (Demo / Manual / Quadros em bruto Q1.3+Q1.4)
+        2. Aba 📋 Dados → editar critérios e matriz (precisão 5 decimais)
+        3. Aba 📋 Dados (secção 2-bis) → escolher motor de pesos (Manual ou AHP)
+        4. Aba 🔍 AHP → se escolheu AHP, preencher matriz par-a-par e validar CR<0,10
+        5. Executar abas 🎯 TOPSIS, 📈 PROMETHEE II e 📊 COPRAS
+        6. Aba 🏆 Dashboard → vista executiva consolidada
+        7. Aba 📑 Relatório → descarregar CSV/Excel/Markdown
 
         ### Reutilizabilidade
-        - Nada hardcoded — suporta até 50 alts × 15 crits
+        - Nada hardcoded — suporta até 50 alts × 15 crits.
+        - Tipo (max/min) propagado a todos os modelos. MAX/MIN respeitado em todas as fórmulas.
         """)
 
     with st.expander("**⚖️ Capítulo 6 — Comparação e Recomendação** (3-4 pp)", expanded=False):
@@ -2544,18 +2001,10 @@ with tabs[16]:
 
     with st.expander("**📚 Referências (APA 7ª)**", expanded=False):
         st.markdown("""
-        - Brans, J.-P., & Vincke, P. (1985). A Preference Ranking Organisation Method. *Management Science*, 31(6), 647-656.
-        - Chang, D.-Y. (1996). Applications of the extent analysis method on fuzzy AHP. *EJOR*, 95(3), 649-655.
-        - Chen, C.-T. (2000). Extensions of the TOPSIS for group decision-making under fuzzy environment. *Fuzzy Sets and Systems*, 114(1), 1-9.
-        - Diakoulaki, D., Mavrotas, G., & Papayannakis, L. (1995). CRITIC method. *Computers & OR*, 22(7), 763-770.
-        - Gabus, A., & Fontela, E. (1972). DEMATEL. *Battelle Geneva Research Center*.
-        - Hwang, C.-L., & Yoon, K. (1981). *Multiple Attribute Decision Making*. Springer-Verlag.
-        - Keeney, R. L., & Raiffa, H. (1976). *Decisions with Multiple Objectives*. Wiley.
-        - Opricovic, S., & Tzeng, G.-H. (2004). VIKOR vs TOPSIS. *EJOR*, 156(2), 445-455.
-        - Roy, B. (1968). ELECTRE. *RAIRO*, 8, 57-75.
-        - Saaty, T. L. (1980). *The Analytic Hierarchy Process*. McGraw-Hill.
-        - Shannon, C. E. (1948). A mathematical theory of communication. *Bell System Technical Journal*, 27, 379-423.
-        - Zavadskas, E. K., & Kaklauskas, A. (1996). *Multiple Criteria Evaluation of Buildings*. Vilnius Technika.
+        - Brans, J.-P., & Vincke, P. (1985). A Preference Ranking Organisation Method (The PROMETHEE Method for Multiple Criteria Decision-Making). *Management Science*, 31(6), 647-656.
+        - Hwang, C.-L., & Yoon, K. (1981). *Multiple Attribute Decision Making: Methods and Applications*. Springer-Verlag.
+        - Saaty, T. L. (1980). *The Analytic Hierarchy Process: Planning, Priority Setting, Resource Allocation*. McGraw-Hill.
+        - Zavadskas, E. K., & Kaklauskas, A. (1996). *Multiple Criteria Evaluation of Buildings* (COPRAS Method). Vilnius Technika.
         """)
 
     st.markdown("---")
