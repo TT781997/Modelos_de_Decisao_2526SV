@@ -1066,17 +1066,84 @@ with tabs[2]:
             colC.metric("Valor ideal", f"{ideal_value:.5f}")
             colD.metric("Sugerido (Saaty)", f"{suggested_value:.5f}",
                        delta=f"Δ = {suggested_value - A[worst_i, worst_j]:+.5f}")
-            st.info(
-                f"**Interpretação:** está a dizer que **{crits[worst_i]}** vale "
-                f"**{A[worst_i, worst_j]:.5f}×** {crits[worst_j]}, mas os pesos calculados "
-                f"sugerem ~**{ideal_value:.5f}×**. Substitua na matriz por **{suggested_value:.5f}** "
-                f"(e o recíproco na célula simétrica = **{1/suggested_value:.5f}**)."
-            )
+
+            colE, colF = st.columns([3, 1])
+            with colE:
+                st.info(
+                    f"**Interpretação:** está a dizer que **{crits[worst_i]}** vale "
+                    f"**{A[worst_i, worst_j]:.5f}×** {crits[worst_j]}, mas os pesos calculados "
+                    f"sugerem ~**{ideal_value:.5f}×**. Aplicar substitui o valor por **{suggested_value:.5f}** "
+                    f"(e o recíproco simétrico = **{1/suggested_value:.5f}**)."
+                )
+            with colF:
+                if st.button("✏️ Aplicar sugestão", type="primary", use_container_width=True,
+                             key="ahp_apply_suggestion"):
+                    # 1) aplicar na matriz numérica (já com reciprocidade)
+                    new_A = A.copy()
+                    old_val = new_A[worst_i, worst_j]
+                    new_A[worst_i, worst_j] = suggested_value
+                    new_A[worst_j, worst_i] = 1.0 / suggested_value
+                    st.session_state.ahp_matrix_pasted = new_A
+
+                    # 2) recalcular pesos + CR
+                    gm_new = np.prod(new_A, axis=1) ** (1.0 / n)
+                    w_new = gm_new / gm_new.sum()
+                    Aw_new = new_A @ w_new
+                    lam_new = (Aw_new / np.where(w_new == 0, 1e-9, w_new)).mean()
+                    CI_new = (lam_new - n) / (n - 1) if n > 1 else 0
+                    CR_new = CI_new / RI if RI > 0 else 0
+                    st.session_state.engine_weights["AHP"] = w_new
+                    st.session_state.ahp_cr = CR_new
+                    st.session_state.ahp_lam_max = lam_new
+                    st.session_state.ahp_ci = CI_new
+
+                    # 3) invalidar caches dos modelos (vão recomputar com pesos novos)
+                    st.session_state.all_results = {}
+
+                    # 4) reconstruir o paste-text para manter a aba 📋 Dados sincronizada
+                    types_now = st.session_state.criteria_df["Tipo"].astype(str).tolist()
+                    lines = ["\t" + "\t".join(crits) + "\tMAX/MIN ?"]
+                    for i_row in range(n):
+                        vals_str = "\t".join(f"{new_A[i_row, j_col]:.5f}" for j_col in range(n))
+                        lines.append(f"{crits[i_row]}\t{vals_str}\t{types_now[i_row]}")
+                    st.session_state.crit_paste_text = "\n".join(lines)
+
+                    # 5) registar no histórico
+                    st.session_state.ahp_history.append({
+                        "iteração": len(st.session_state.ahp_history) + 1,
+                        "par": f"{crits[worst_i]} vs {crits[worst_j]}",
+                        "valor antigo": round(old_val, 5),
+                        "valor novo": round(suggested_value, 5),
+                        "CR antes": round(CR, 5),
+                        "CR depois": round(CR_new, 5),
+                    })
+
+                    if CR_new < 0.10:
+                        st.success(
+                            f"✅ Sugestão aplicada. **CR = {CR_new:.5f} < 0.10** — matriz agora consistente!"
+                        )
+                    else:
+                        st.success(
+                            f"✓ Sugestão aplicada. CR baixou de {CR:.5f} → {CR_new:.5f}. "
+                            f"Ainda ≥ 0.10 — clique de novo se quiser continuar a iterar."
+                        )
+                    st.rerun()
     else:
         st.markdown(
             f'<div class="result-box">✅ <b>Matriz CONSISTENTE</b> — CR = {CR:.5f} < 0.10. Pesos AHP válidos.</div>',
             unsafe_allow_html=True
         )
+
+    # Histórico de iterações
+    if st.session_state.ahp_history:
+        with st.expander(f"📜 Histórico de iterações AHP ({len(st.session_state.ahp_history)})", expanded=False):
+            st.dataframe(
+                pd.DataFrame(st.session_state.ahp_history),
+                hide_index=True, use_container_width=True
+            )
+            if st.button("🗑️ Limpar histórico", key="ahp_clear_history"):
+                st.session_state.ahp_history = []
+                st.rerun()
 
     # garantir que os pesos AHP no session_state estão sincronizados
     st.session_state.engine_weights["AHP"] = w_ahp
