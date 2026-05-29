@@ -297,17 +297,8 @@ def step_header(text):
 def check_valid_input():
     matrix, alts, crits, types = get_decision_matrix()
     if len(alts) < 2 or len(crits) < 2 or matrix.size == 0 or np.all(matrix == 0):
-        st.markdown(
-            """<div class="cta-box">
-            <h2>👈 SEM DADOS — VÁ À ABA 📋 DADOS</h2>
-            <p>Esta aba precisa de uma <b>matriz de decisão</b> + <b>matriz AHP par-a-par</b>.</p>
-            <p>Na aba <b>📋 Dados</b>:</p>
-            <p>1. Cole a <b>matriz AHP dos critérios</b> (com coluna MAX/MIN)<br>
-               2. Cole a <b>tabela das alternativas</b> × critérios<br>
-               3. Prima <b>Processar pastes</b></p>
-            </div>""",
-            unsafe_allow_html=True
-        )
+        st.info("📥 Sem dados carregados. Vá à aba **📋 Dados**, cole a matriz AHP + a tabela de alternativas, "
+                "e prima **🚀 Processar pastes**.")
         return False
     return True
 
@@ -511,29 +502,9 @@ st.markdown(
 )
 
 
-# =============================================================================
-# SIDEBAR — INFO motor AHP (não há escolha)
-# =============================================================================
-with st.sidebar:
-    st.header("🔌 Motor de Pesos")
-    # forçar sempre AHP
-    st.session_state.global_injection_on = True
-    st.session_state.global_injection_engine = "AHP"
-
-    if "AHP" in st.session_state.engine_weights:
-        st.success("✓ Motor activo: **AHP** (pesos calculados)")
-    else:
-        st.warning(
-            "⚠️ AHP **não calculado**.\n\n"
-            "Vá à aba **🔍 AHP** para preencher a Matriz de Comparação Par-a-Par.\n\n"
-            "Enquanto isso, modelos usam pesos iguais (1/n)."
-        )
-
-    st.markdown("---")
-    st.caption(
-        "💡 **Toda a configuração** (fonte de dados, paste de quadros, editor de critérios, "
-        "sensibilidade) está na aba **📋 Dados**."
-    )
+# Forçar sempre AHP como motor de pesos (não há sidebar nem escolha alternativa)
+st.session_state.global_injection_on = True
+st.session_state.global_injection_engine = "AHP"
 
 
 # =============================================================================
@@ -769,25 +740,6 @@ with tabs[1]:
         '<div class="data-section"><h3>📥 1. Matriz AHP dos Critérios (par-a-par + MAX/MIN)</h3></div>',
         unsafe_allow_html=True
     )
-    with st.expander("ℹ️ Como preparar este paste (exemplo Foto 2)", expanded=False):
-        st.markdown(
-            """
-            **Estrutura esperada** — copie do Excel a sua matriz par-a-par dos critérios, **com cabeçalhos** e a coluna **MAX/MIN** no fim:
-
-            ```
-                     C1_VP    C2_PF    C3_EE    C4_FE    C5_UD    C6_RC    MAX/MIN ?
-            C1_VP    1.0000   4.0000   8.0000   6.0000   9.0000   5.0000   max
-            C2_PF    0.2500   1.0000   8.0000   3.0000   9.0000   2.0000   max
-            C3_EE    0.1250   0.1250   1.0000   0.1111   1.0000   0.1111   min
-            C4_FE    0.1667   0.3333   9.0000   1.0000   9.0000   0.1667   max
-            C5_UD    0.1111   0.1111   1.0000   0.1111   1.0000   0.1111   max
-            C6_RC    0.2000   0.5000   9.0000   6.0000   9.0000   1.0000   max
-            ```
-            • Escala Saaty: **1 = igual**, **3 = moderada**, **5 = forte**, **7 = muito forte**, **9 = extrema**; recíprocos como **0.11111 (=1/9)**, **0.1667 (=1/6)** etc.
-            • A coluna **MAX/MIN ?** indica o tipo do critério: `max` = benefício, `min` = custo.
-            • Pode colar até 5 casas decimais (`0.11111`).
-            """
-        )
 
     default_crit_paste = """\tC1_VP\tC2_PF\tC3_EE\tC4_FE\tC5_UD\tC6_RC\tMAX/MIN ?
 C1_VP\t1.0000\t4.0000\t8.0000\t6.0000\t9.0000\t5.0000\tmax
@@ -812,23 +764,6 @@ C6_RC\t0.2000\t0.5000\t9.0000\t6.0000\t9.0000\t1.0000\tmax"""
         '<div class="data-section"><h3>📥 2. Tabela das Alternativas × Critérios</h3></div>',
         unsafe_allow_html=True
     )
-    with st.expander("ℹ️ Como preparar este paste (exemplo Foto 3)", expanded=False):
-        st.markdown(
-            """
-            **Estrutura esperada** — copie do Excel a tabela com `Alternativa` na 1ª coluna e os mesmos códigos de critérios da matriz AHP:
-
-            ```
-            Alternativa  C1_VP        C2_PF   C3_EE   C4_FE   C5_UD   C6_RC
-            A1           250,000,000  0.25    24      4       180     4
-            A2           300,000      0.35    8       5       60      5
-            A3           900,000      0.50    8       3       60      5
-            ...          ...          ...     ...     ...     ...     ...
-            ```
-            • Aceita valores com **vírgula, ponto, "€", "%"** ou espaços nos milhares (`250 000 000`).
-            • Os códigos dos critérios devem ser **exactamente os mesmos** da matriz AHP acima.
-            • Aceita rótulos como "Critérios Quantitativos / Qualitativos" acima do cabeçalho — são ignorados.
-            """
-        )
 
     default_alts_paste = """Alternativa\tC1_VP\tC2_PF\tC3_EE\tC4_FE\tC5_UD\tC6_RC
 A1\t250000000\t0.25\t24\t4\t180\t4
@@ -853,6 +788,28 @@ A9\t15000000\t0.60\t24\t4\t300\t3"""
     # SECÇÃO 3 — PROCESSAR (parse + AHP + matriz)
     # ============================================================================
     st.markdown('<div class="data-section"><h3>⚙️ 3. Processar dados</h3></div>', unsafe_allow_html=True)
+
+    # Banner PERSISTENTE de último processamento (sobrevive a reruns)
+    if st.session_state.get("last_process_info"):
+        info = st.session_state.last_process_info
+        cr_val = info["CR"]
+        cr_emoji = "✓" if cr_val < 0.10 else "✗"
+        cr_text = "consistente" if cr_val < 0.10 else "inconsistente"
+        st.markdown(
+            f"""<div style="background: linear-gradient(90deg, #d4edda 0%, #c3e6cb 100%);
+            border-left: 4px solid #28a745; color: #155724; padding: 12px 16px;
+            border-radius: 6px; margin-bottom: 8px;">
+              <b>✅ Dados processados em {info['when']}</b><br>
+              <span style="font-size: 13px;">
+                • {info['n_alts']} alternativas × {info['n_crits']} critérios<br>
+                • Tipos: {info['n_max']} benefício (max) · {info['n_min']} custo (min)<br>
+                • AHP — CR = <b>{cr_val:.5f}</b> {cr_emoji} ({cr_text})<br>
+                • Pesos AHP injectados em TOPSIS, PROMETHEE II e COPRAS
+              </span>
+            </div>""",
+            unsafe_allow_html=True
+        )
+
     if st.button("🚀 Processar pastes (parse + calcular AHP + carregar)", type="primary", use_container_width=True):
         try:
             codes, types_parsed, ahp_matrix = parse_criteria_paste(crit_text)
@@ -878,11 +835,17 @@ A9\t15000000\t0.60\t24\t4\t300\t3"""
             st.session_state.global_injection_engine = "AHP"
             st.session_state.all_results = {}  # invalidar caches dos modelos
 
-            st.success(
-                f"✅ Carregado: **{len(alt_names)} alternativas × {len(codes)} critérios**. "
-                f"AHP calculado — **CR = {CR:.5f}** "
-                f"({'✓ consistente' if CR < 0.10 else '✗ inconsistente (> 0.10)'})."
-            )
+            # banner persistente
+            from datetime import datetime
+            st.session_state.last_process_info = {
+                "when": datetime.now().strftime("%H:%M:%S"),
+                "n_alts": len(alt_names),
+                "n_crits": len(codes),
+                "n_max": types_parsed.count("max"),
+                "n_min": types_parsed.count("min"),
+                "CR": CR,
+            }
+            st.balloons()
             st.rerun()
         except Exception as e:
             st.error(f"❌ Erro no parsing: {e}")
@@ -899,54 +862,6 @@ A9\t15000000\t0.60\t24\t4\t300\t3"""
         help="Aplicada em todas as análises de sensibilidade do Dashboard e abas dos modelos."
     )
     st.metric("Variação activa", f"±{st.session_state.sensitivity_pct}%")
-
-    # ============================================================================
-    # SECÇÃO 5 — PRÉ-VISUALIZAÇÃO
-    # ============================================================================
-    st.markdown('<div class="data-section"><h3>👁️ 5. Pré-visualização dos dados activos</h3></div>',
-                unsafe_allow_html=True)
-
-    matrix, alts, crits, types = get_decision_matrix()
-    if not check_valid_input():
-        st.stop()
-
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Alternativas", len(alts))
-    c2.metric("Critérios", len(crits))
-    c3.metric("Max (benefícios)", types.count("max"))
-    c4.metric("Min (custos)", types.count("min"))
-
-    st.subheader("Critérios + tipo + peso AHP")
-    if "AHP" in st.session_state.engine_weights and len(st.session_state.engine_weights["AHP"]) == len(crits):
-        w_display = st.session_state.engine_weights["AHP"]
-        cr_display = st.session_state.get("ahp_cr", None)
-        df_ct = pd.DataFrame({
-            "Critério": crits, "Tipo": types,
-            "Peso AHP": w_display, "%": [f"{x*100:.2f}%" for x in w_display],
-        })
-        st.dataframe(df_ct.style.format({"Peso AHP": "{:.5f}"})
-                       .background_gradient(cmap="Blues", subset=["Peso AHP"]),
-                    hide_index=True, use_container_width=True)
-        if cr_display is not None:
-            if cr_display < 0.10:
-                st.success(f"✓ CR = **{cr_display:.5f}** < 0.10 — matriz AHP consistente. Pesos válidos.")
-            else:
-                st.warning(f"⚠️ CR = **{cr_display:.5f}** ≥ 0.10 — matriz AHP inconsistente. "
-                           f"Vá à aba 🔍 AHP para ver a sugestão de correcção.")
-    else:
-        st.info("Pesos AHP ainda não calculados. Carregue os pastes acima e prima Processar.")
-
-    st.subheader("Matriz de Decisão")
-    display_df = pd.DataFrame(matrix, index=alts, columns=crits)
-    st.dataframe(display_df.style.format("{:.5f}").background_gradient(cmap="Blues", axis=0),
-                use_container_width=True)
-
-    st.subheader("Heatmap normalizado (min-max, sentido aplicado)")
-    norm = normalize_minmax(matrix, types)
-    norm_df = pd.DataFrame(norm, index=alts, columns=crits)
-    st.dataframe(norm_df.style.format("{:.5f}").background_gradient(cmap="RdYlGn", axis=None),
-                use_container_width=True)
-    st.caption("1.0 = melhor; 0.0 = pior (com inversão automática para critérios de custo).")
 
 # =============================================================================
 # TAB 2: AHP — DISPLAY-ONLY (matriz vem da aba 📋 Dados)
