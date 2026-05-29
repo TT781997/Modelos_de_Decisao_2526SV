@@ -1,364 +1,181 @@
-# MCDM Dashboard — Sistema de Apoio à Decisão Multicritério
+# MCDM Dashboard — Guia Rápido
 
-Aplicação web interactiva em **Streamlit** que implementa **13 modelos de decisão multicritério** e produz um dashboard consolidado de ranking. Desenvolvida para a unidade curricular **Modelos de Decisão** do Mestrado em Engenharia e Gestão Industrial (MEGI) do ISEL, com o caso de estudo MCG (priorização de oportunidades comerciais no sector Automotive).
-
-A app é totalmente dinâmica: aceita qualquer Excel com N alternativas × M critérios e recalcula tudo sem editar código.
+Ferramenta de **apoio à decisão multicritério** (MCDM). A *homepage* é o **🏆 Dashboard** — todo o resto (Dados, AHP, TOPSIS, PROMETHEE II, COPRAS) é detalhe consultável.
 
 ---
 
-## Índice
-
-1. [Pré-requisitos](#pré-requisitos)
-2. [Instalação e execução](#instalação-e-execução)
-3. [Formato do ficheiro Excel](#formato-do-ficheiro-excel)
-4. [Como usar a webapp](#como-usar-a-webapp)
-5. [Modelos implementados](#modelos-implementados)
-6. [Estrutura das 16 abas](#estrutura-das-16-abas)
-7. [Deploy online (live)](#deploy-online-live)
-8. [Troubleshooting](#troubleshooting)
-9. [Notas metodológicas](#notas-metodológicas)
-
----
-
-## Pré-requisitos
-
-- **Python 3.9 ou superior** (testado em 3.10 / 3.11 / 3.12)
-- **pip** actualizado (`python -m pip install --upgrade pip`)
-- Browser moderno (Chrome, Firefox, Edge, Safari)
-
-Verifica a versão do Python com:
+## 1. Como instalar e correr
 
 ```bash
-python --version
-```
-
----
-
-## Instalação e execução
-
-### 1. Clonar/descarregar o projecto
-
-Coloca `app.py`, `requirements.txt` e `README.md` na mesma pasta. Estrutura mínima:
-
-```
-mcdm-dashboard/
-├── app.py
-├── requirements.txt
-└── README.md
-```
-
-### 2. (Recomendado) Criar ambiente virtual
-
-```bash
-# Linux / macOS
-python3 -m venv .venv
-source .venv/bin/activate
-
-# Windows (PowerShell)
-python -m venv .venv
-.venv\Scripts\Activate.ps1
-```
-
-### 3. Instalar dependências
-
-```bash
-pip install -r requirements.txt
-```
-
-### 4. Correr a aplicação
-
-```bash
+pip install streamlit pandas numpy plotly
 streamlit run app.py
 ```
 
-A app abre automaticamente em **http://localhost:8501**. Se não abrir, abre manualmente esse URL no browser.
-
-Para parar a app: `Ctrl + C` no terminal.
+Abre automaticamente no browser em `http://localhost:8501`.
 
 ---
 
-## Formato do ficheiro Excel
+## 2. Como alimentar a ferramenta — 3 passos
 
-A app exige um ficheiro `.xlsx` com pelo menos uma folha chamada `Dados`. Opcionalmente pode incluir uma folha `Pesos`.
+Toda a entrada de dados está na aba **📋 Dados**.
 
-### Folha `Dados` (obrigatória)
+### Passo 1 — Colar a matriz AHP dos critérios
 
-| Alternativa | C1_VP       | C2_PF | C3_EE | C4_FE | C5_UD | C6_RC |
-|:------------|------------:|------:|------:|------:|------:|------:|
-| A1          | 250 000 000 | 0,25  | 24    | 4     | 180   | 4     |
-| A2          | 300 000     | 0,35  | 8     | 5     | 60    | 5     |
-| A3          | 900 000     | 0,50  | 8     | 3     | 60    | 5     |
-| ...         | ...         | ...   | ...   | ...   | ...   | ...   |
+Copie do Excel a sua **matriz de comparação par-a-par** dos critérios, **com cabeçalho** e uma coluna **MAX/MIN** no fim. Exemplo:
 
-**Regras:**
+```
+         C1_VP    C2_PF    C3_EE    C4_FE    C5_UD    C6_RC    MAX/MIN ?
+C1_VP    1.0000   4.0000   8.0000   6.0000   9.0000   5.0000   max
+C2_PF    0.2500   1.0000   8.0000   3.0000   9.0000   2.0000   max
+C3_EE    0.1250   0.1250   1.0000   0.1111   1.0000   0.1111   min
+C4_FE    0.1667   0.3333   9.0000   1.0000   9.0000   0.1667   max
+C5_UD    0.1111   0.1111   1.0000   0.1111   1.0000   0.1111   max
+C6_RC    0.2000   0.5000   9.0000   6.0000   9.0000   1.0000   max
+```
 
-- A **primeira coluna** identifica a alternativa (pode ser texto: `A1`, `Oportunidade Be`, etc.).
-- As **restantes colunas** são os critérios e têm de ser **numéricas**.
-- Não há limite de linhas (alternativas) nem de colunas (critérios). A app adapta-se dinamicamente.
-- Linhas vazias na primeira coluna são ignoradas.
-- O nome das colunas dos critérios é livre (`C1_VP`, `Valor`, `revenue_2025`, etc.) — só a posição importa.
+- Escala Saaty: **1**=igual · **3**=moderada · **5**=forte · **7**=muito forte · **9**=extrema. Recíprocos: **0.11111** (=1/9), **0.1667** (=1/6) etc.
+- Coluna **MAX/MIN**: `max` = benefício (mais é melhor), `min` = custo (menos é melhor).
+- Aceita até **5 casas decimais**.
+- Cole na 1ª caixa de texto da aba 📋 Dados.
 
-### Folha `Pesos` (opcional)
+### Passo 2 — Colar a tabela das alternativas
 
-Vector de pesos na mesma ordem das colunas de critérios da folha `Dados`. Aceita linha ou coluna:
+Copie do Excel a tabela `Alternativa × Critério`. Os códigos de critério têm de ser **exactamente os mesmos** da matriz AHP. Exemplo:
 
-| 0,4615 |
-|-------:|
-| 0,1987 |
-| 0,0230 |
-| 0,0972 |
-| 0,0217 |
-| 0,1979 |
+```
+Alternativa  C1_VP        C2_PF   C3_EE   C4_FE   C5_UD   C6_RC
+A1           250,000,000  0.25    24      4       180     4
+A2           300,000      0.35    8       5       60      5
+A3           900,000      0.50    8       3       60      5
+...          ...          ...     ...     ...     ...     ...
+```
 
-ou em formato horizontal:
+- Aceita formatos com `€`, `%`, vírgulas decimais (`0,462`) e espaços nos milhares (`250 000 000`).
+- Aceita rótulos como "Critérios Quantitativos / Qualitativos" acima do cabeçalho — são ignorados.
+- Cole na 2ª caixa de texto da aba 📋 Dados.
 
-| 0,4615 | 0,1987 | 0,0230 | 0,0972 | 0,0217 | 0,1979 |
+### Passo 3 — Premir **🚀 Processar pastes**
 
-Os pesos são automaticamente normalizados (somatório = 1). **Se a folha `Pesos` não existir**, a app aplica pesos uniformes (1/M) e mostra um aviso amarelo na sidebar. Para o caso MCG, os pesos uniformes (≈ 0.1667) são incorrectos — usa os pesos AHP de Q5.2.
+A ferramenta:
+1. Faz parsing dos dois quadros
+2. Calcula automaticamente os **pesos AHP** (média geométrica)
+3. Calcula o **CR** (índice de consistência); se ≥ 0.10 mostra a sugestão de correcção na aba 🔍 AHP
+4. Carrega TOPSIS, PROMETHEE II e COPRAS com os pesos AHP
 
-> ⚠️ **Atenção ao caso MCG:** o ficheiro `Dados_MCG.xlsx` (entregue junto à app) já tem a folha `Pesos` pré-preenchida com os pesos AHP correctos: C1_VP=0.4615, C2_PF=0.1987, C3_EE=0.0230, C4_FE=0.0972, C5_UD=0.0217, C6_RC=0.1979.
-
-### Sentido dos critérios (configurado na sidebar, não no Excel)
-
-| Critério | Sentido | Justificação |
-|----------|---------|--------------|
-| C1_VP | `max` | Valor potencial em €/ano — quanto maior, melhor |
-| C2_PF | `max` | Probabilidade de fecho — quanto maior, melhor |
-| **C3_EE** | **`min`** | **Esforço estimado (horas/semana) — quanto menor, melhor** |
-| C4_FE | `max` | Fit estratégico (1-5) — quanto maior, melhor |
-| **C5_UD** | **`min`** | **Urgência (dias até decisão) — quanto menos dias, mais urgente / melhor** |
-| C6_RC | `max` | Relacionamento com cliente (1-5) — quanto maior, melhor |
-
-A heurística da app detecta automaticamente sufixos `_EE`, `_UD`, `_custo`, `_prazo`, etc. mas confirma sempre na tabela da sidebar antes de correr a análise.
-
-### Modo de demonstração
-
-Se não tiveres ficheiro à mão, activa na sidebar **"Usar dados de demonstração MCG"** — carrega os 9 alts × 6 critérios do caso de estudo com pesos AHP pré-calculados. **A checkbox arranca sempre desligada** ao abrir o URL: cada visitante começa sem dados activos.
+Pronto. Vá ao **🏆 Dashboard**.
 
 ---
 
-## Como usar a webapp
+## 3. Como ler o Dashboard
 
-### Sidebar (painel esquerdo)
+Layout em 4 zonas, todas **recalculadas dinamicamente** sempre que os dados ou os pesos mudam.
 
-1. **Upload** — carrega o `.xlsx`.
-2. **Modo demo** — checkbox para activar dados MCG.
-3. **Parâmetros dos modelos:**
-   - ELECTRE: limiares de concordância `c` (default 0,65) e discordância `d` (default 0,35).
-   - PROMETHEE: função de preferência (`usual`, `linear` ou `gaussian`).
-   - VIKOR: peso da estratégia `v` (default 0,5).
-   - Sensibilidade TOPSIS: variação ±% nos pesos (default 20%).
-4. **Sentido dos critérios** — `max` (benefício) ou `min` (custo) para cada critério. A app aplica heurística para detectar critérios de custo (ex.: contém "EE", "custo", "esforço") mas podes corrigir.
-5. **Pesos editáveis** — ajusta manualmente; normalização automática.
+### Zona 1 — Topo (4 colunas)
 
-### Área principal (14 abas)
+| Coluna | O que faz |
+|---|---|
+| **🔧 Filtros** | Escolha o **modelo destacado** (AHP/TOPSIS/PROMETHEE/COPRAS) → propaga para a tabela e gráfico de sensibilidade. Escolha o **critério** para a análise de sensibilidade. Escolha uma **alternativa** para destacar no radar. |
+| **🏆 Ranking Consolidado** | Tabela com rank de cada alternativa em cada modelo, posição média, **Ranking Final** consensual, e Score do modelo destacado. Cores: verde = melhor, vermelho = pior. |
+| **🎯 Perfil Multicritério** | Gráfico radar com o Top-3 consensual em ouro/prata/bronze + alternativa que escolheu (linha tracejada roxa). Eixos = critérios. Eixo de 0 a 1 (normalizado). |
+| **🌪️ Sensibilidade do critério** | O score do modelo destacado quando o peso do critério escolhido sobe X% (X = slider na 📋 Dados). |
 
-Cada aba mostra:
-- Tabelas intermédias (matrizes normalizadas, ponderadas, distâncias, etc.).
-- Score final e ranking por alternativa.
-- Visualização (gráfico de barras, heatmap, radar, etc.).
+### Zona 2 — Gráficos por Modelo (4 colunas)
 
-A última aba — **Dashboard Consolidado** — cruza os rankings de todos os modelos e gera uma recomendação agregada.
+Um gráfico de barras horizontais por modelo. Para cada um:
+- **TOPSIS** mostra CC* (proximidade)
+- **PROMETHEE II** mostra φ líquido (azul positivo, vermelho negativo, linha vertical no zero)
+- **AHP** mostra Score AHP
+- **COPRAS** mostra Q_i
 
----
+Cores: azul-escuro = Top-3, azul-claro = posições 4-6, vermelho = piores.
 
-## Modelos implementados
+### Zona 3 — Sensibilidade por Critério (6 caixinhas)
 
-### Modelos clássicos (crisp)
+Para cada critério, mostra:
+- **Linha 1** (azul): nome do critério
+- **Linha 2**: estado a ±X% do slider (verde "Robusto" ou vermelho "Sensível")
+- **Linha 3-4 — Margem de Segurança**: até **quanto** se pode variar o peso isoladamente sem mudar o Top-1 consensual. Ex.: `+>50% estável` = peso pode subir 50% e o Top-1 não muda; `-55% → A9` = se baixar 55%, o Top-1 passa a A9.
 
-#### 1. AHP — Analytic Hierarchy Process
-Determina pesos dos critérios através de uma matriz de comparação par-a-par usando a escala de Saaty (1-9). Calcula o autovector principal e o **Consistency Ratio (CR)**: se CR < 0,10 os julgamentos são consistentes. Útil para extrair preferências subjectivas de decisores.
+### Zona 4 — Recomendação e Pesos
 
-#### 2. ANP — Analytic Network Process
-Extensão do AHP que captura dependências entre critérios (rede em vez de hierarquia). Esta implementação usa uma **aproximação data-driven**: estima a influência inter-critério via correlações nas alternativas observadas, constrói a supermatriz e eleva-a a potências até convergir. Os pesos AHP são modulados pela matriz limite.
-
-#### 3. TOPSIS — Technique for Order Preference by Similarity to Ideal Solution
-Cada alternativa é comparada com a solução ideal (A+) e anti-ideal (A−) num espaço euclidiano ponderado. O **coeficiente Ci\*** mede proximidade ao ideal (0 = pior, 1 = melhor). Inclui análise de sensibilidade ±% nos pesos com error bars.
-
-#### 4. ELECTRE I — ELimination Et Choix Traduisant la REalité
-Constrói relações de **sobreclassificação**: a alternativa A "sobreclassifica" B se a concordância (peso dos critérios em que A ≥ B) excede um limiar `c` e a discordância (maior diferença em critérios desfavoráveis a A) está abaixo de `d`. Devolve um **kernel** (subconjunto de não-dominadas). Não produz ranking total — ideal para identificar candidatas robustas.
-
-#### 5. PROMETHEE II — Preference Ranking Organization METHod for Enrichment Evaluations
-Compara pares de alternativas por critério através de **funções de preferência** (usual, linear, gaussiana). Agrega num **fluxo líquido φ = φ⁺ − φ⁻** que ordena todas as alternativas. Mais informativo que ELECTRE I quando se quer ranking completo.
-
-#### 6. VIKOR — VIseKriterijumska Optimizacija I Kompromisno Resenje
-Procura a solução de compromisso minimizando o arrependimento. Calcula:
-- **S**: distância à solução ideal (utilidade de grupo)
-- **R**: pior desvio individual (arrependimento)
-- **Q = v·S + (1−v)·R**: índice de compromisso
-
-O parâmetro `v` (default 0,5) regula a estratégia: `v=1` privilegia utilidade, `v=0` privilegia equidade.
-
-#### 7. MAUT — Multi-Attribute Utility Theory
-Modelo de **utilidade linear aditiva**: normaliza valores via min-max (invertendo critérios de custo) e calcula U = Σ wᵢ · uᵢ(x). Simples, transparente e estável.
-
-#### 8. COPRAS — COmplex PRoportional ASsessment
-Separa critérios em benefícios (S⁺) e custos (S⁻), calcula utilidade relativa Q usando a razão entre os dois, e normaliza para uma escala N% (100 = melhor). Boa interpretação económica quando há trade-off claro entre receita e custo.
-
-#### 9. DEMATEL — Decision Making Trial and Evaluation Laboratory
-Modela influências causais entre critérios. Constrói a matriz de relação total **T = X(I−X)⁻¹** e produz:
-- **D + R** (prominência): importância global do critério
-- **D − R** (relação): se positivo → critério causal, se negativo → critério efeito
-
-Aqui usa-se proxy data-driven (correlações) na ausência de matriz de influência directa. A prominência modula os pesos para o ranking final.
-
-### Modelos Fuzzy (incerteza)
-
-#### 10. Fuzzy AHP
-Substitui os julgamentos crisp por **números triangulares fuzzy** (l, m, u) — gerados a partir dos pesos crisp com spread ±20% como aproximação. A defuzzificação usa o **método do centro de área**.
-
-#### 11. Fuzzy TOPSIS
-TOPSIS com valores tratados como números triangulares (val·(1−s), val, val·(1+s)). Calcula soluções ideais fuzzy (FPIS e FNIS) e distâncias pelo **método do vértice**. O slider de spread permite explorar diferentes níveis de incerteza.
-
-#### 12. Fuzzy ANP
-Combina pesos fuzzy do Fuzzy AHP com o ajuste por supermatriz de influência do ANP. Útil quando há simultaneamente dependência entre critérios e incerteza nas avaliações.
-
-### Modelo agregado
-
-#### 13. Ranking Consolidado (Borda invertido)
-No dashboard final, todas as posições por modelo são agregadas por **média de posições** (método de Borda invertido). O modelo declara "convergência" Top-3 quando ≥ 60% dos modelos colocam a alternativa nas 3 primeiras posições.
+- **Cartão azul**: Top-3 final (🥇🥈🥉)
+- **Barra colorida**: convergência inter-modelo (🟢 ALTA / 🟡 MODERADA / 🔴 BAIXA)
+- **Margem de Segurança Mínima**: o "elo mais fraco" da decisão
+- **Tabela à direita**: critérios + tipo + pesos AHP em %
 
 ---
 
-## Estrutura das 16 abas
+## 4. Como interagir com os gráficos (Plotly)
 
-| # | Aba | Conteúdo principal |
-|---|-----|--------------------|
-| 1 | **Visão Geral** | Matriz de decisão, pesos, sentidos, descritivas, heatmap normalizado |
-| 2 | **AHP** | Matriz Saaty editável, λ_max, CI, CR, **aviso de inconsistência + par mais problemático**, pesos AHP, ranking |
-| 3 | **ANP** | Pesos ajustados, matriz limite, ranking |
-| 4 | **TOPSIS** | Matrizes normalizada/ponderada, A+/A−, D+/D−, Ci*, ranking, sensibilidade com error bars |
-| 5 | **ELECTRE** | Matrizes C e D, sobreclassificação, kernel, mapa de estabilidade c×d |
-| 6 | **PROMETHEE** | Matriz π, φ+/φ−/φ líquido, comparação entre 3 funções de preferência |
-| 7 | **VIKOR** | S, R, Q com slider v |
-| 8 | **MAUT** | Utilidades parciais + utilidade global |
-| 9 | **COPRAS** | S⁺, S⁻, Q, N% |
-| 10 | **DEMATEL** | Matriz T, prominência, diagrama causa-efeito |
-| 11 | **Fuzzy AHP** | Pesos fuzzy triangulares + defuzzificação |
-| 12 | **Fuzzy TOPSIS** | d+/d−, CC, slider de spread |
-| 13 | **Fuzzy ANP** | Pesos fuzzy + ajuste supermatriz |
-| 14 | **Dashboard Consolidado** | Tabela cruzada, heatmap de posições, radar Top-3, painel de recomendação, export Excel |
-| 15 | **📚 Teoria & Matemática** | Fundamentação matemática completa de cada modelo (fórmulas em LaTeX, referências bibliográficas) |
-| 16 | **📄 Relatório** | Relatório dinâmico gerado a partir dos dados carregados (sumário executivo, contexto, metodologia, resultados por modelo, ranking agregado, recomendação, limitações). Download em `.md` ou `.txt` |
+Todos os gráficos são Plotly e suportam:
 
-O **export Excel** na aba 14 gera um ficheiro `mcdm_resultados.xlsx` com folhas para Dados, Pesos_e_Tipos, Rankings e Scores. A aba **Relatório** gera um documento dinâmico com 8 secções (sumário executivo → recomendação → limitações), totalmente baseado nos dados de entrada — nenhum texto hardcoded sobre alternativas ou critérios específicos.
+- **🖱️ Hover** sobre uma barra/ponto → tooltip com valor exacto
+- **🔍 Zoom** → arrastar uma caixa sobre a área de interesse; duplo-click para reset
+- **📷 Camera** (canto superior direito do gráfico) → exporta PNG
+- **🪟 Pan** (ferramenta de mão) → mover o gráfico
+- **👁️ Legenda** → clicar num item na legenda esconde/mostra essa série (útil no radar)
+
+No radar:
+- Clique numa entrada da legenda para esconder/mostrar (compare apenas 2 alternativas, por exemplo)
+
+Nas tabelas:
+- Clique nos cabeçalhos para **ordenar**
+- Cores degradadas mostram melhor/pior por coluna
 
 ---
 
-## Deploy online (live)
+## 5. Análise de Sensibilidade — slider global
 
-> **Importante:** o GitHub Pages (`*.github.io`) **não consegue correr esta app**. GitHub Pages só serve ficheiros estáticos (HTML/CSS/JS) e o Streamlit precisa de um servidor Python a correr o backend. Mas há uma alternativa praticamente igual, gratuita e oficial: o **Streamlit Community Cloud**.
+Na aba **📋 Dados**, secção 4, há um slider **Variação ± nos pesos (%)** entre 5% e 50%. Define o nível de perturbação que vai ser aplicado:
+- Na coluna 4 do Dashboard (efeito de variar o critério escolhido)
+- Nas 6 caixinhas (estado a ±X% — linha verde/vermelha)
+- Nas abas dos modelos individuais (Tornado interno)
 
-### Opção recomendada — Streamlit Community Cloud (gratuito)
-
-Liga directamente ao teu repositório GitHub e gera um URL público (`https://<utilizador>-<repo>-app-<hash>.streamlit.app`).
-
-**Passos:**
-
-1. **Cria um repositório no GitHub** com os ficheiros:
-   ```
-   mcdm-dashboard/
-   ├── app.py
-   ├── requirements.txt
-   └── README.md
-   ```
-
-2. **Push para o GitHub** (terminal):
-   ```bash
-   cd mcdm-dashboard
-   git init
-   git add .
-   git commit -m "Initial MCDM dashboard"
-   git branch -M main
-   git remote add origin https://github.com/<teu-utilizador>/mcdm-dashboard.git
-   git push -u origin main
-   ```
-
-3. **Vai a https://share.streamlit.io** e faz login com a conta GitHub.
-
-4. **"New app"** → seleciona o repositório `mcdm-dashboard` → branch `main` → ficheiro principal `app.py` → **Deploy!**
-
-5. Em 1-2 minutos a app fica online num URL público. Partilhas com o professor / colegas.
-
-**Restrições do tier gratuito:** 1 GB de RAM, app dorme se ficar inactiva mas reactiva automaticamente ao primeiro acesso. Mais que suficiente para este caso.
-
-### Alternativas (também gratuitas)
-
-| Plataforma | Vantagens | Desvantagens |
-|------------|-----------|--------------|
-| **Hugging Face Spaces** | Suporta Streamlit nativamente, GPU opcional | URL menos amigável |
-| **Render** | Free tier; bom uptime | Configuração mais complexa (precisa Procfile) |
-| **Railway** | Deploy via GitHub, generoso | 5 USD crédito/mês depois pago |
-
-Para o âmbito do trabalho académico, **Streamlit Community Cloud** é claramente o caminho mais limpo.
-
-### E o github.io?
-
-Se mesmo assim quiseres usar **github.io**, terias de re-implementar a app como pura HTML/JS (sem Python), provavelmente com bibliotecas tipo `mathjs` ou portar os modelos para JavaScript. Não recomendo — perdes a vantagem do ecossistema científico do Python (numpy, pandas) e o esforço é desproporcionado para o objectivo.
-
-### Alternativa híbrida: badge no github.io
-
-O que **podes** fazer no github.io: criar uma landing page estática (com texto, screenshots, vídeo demo) que tem um botão "🚀 Abrir App" a apontar para o URL Streamlit Cloud. Aproveitas a vanity URL `<user>.github.io/mcdm` e mantens a app a correr no Streamlit Cloud.
+A **margem de segurança** nas caixinhas é independente do slider — varre sempre até ±50%.
 
 ---
 
-## Troubleshooting
+## 6. Fluxo típico de uso
 
-### A app não abre / `streamlit: command not found`
-- Confirma que o ambiente virtual está activado.
-- Reinstala: `pip install --upgrade streamlit`.
-
-### Erro `ModuleNotFoundError: openpyxl`
-- O Excel `.xlsx` precisa de `openpyxl`. Instala: `pip install openpyxl`.
-
-### Erro `Folha 'Dados' não foi encontrada`
-- Verifica o nome da folha no Excel — tem de ser exactamente `Dados` (sensível a maiúsculas/minúsculas).
-
-### Pesos aparecem como 0.1667 / pesos uniformes
-- O Excel não tem folha `Pesos` ou os valores numéricos não foram detectados. A sidebar mostra um aviso amarelo. **Solução:** acrescenta uma folha `Pesos` ao Excel com os pesos AHP (uma coluna ou linha de valores numéricos) — ou usa o `Dados_MCG.xlsx` template que já vem pré-preenchido.
-
-### Critério de custo está a ser tratado como benefício
-- Na sidebar, na tabela "Configuração de critérios", muda `Sentido` para `min` na linha do critério em causa. A heurística automática captura nomes com `_EE`, `_UD`, `custo`, `prazo`, `tempo`, etc. mas pode falhar em nomes não-standard.
-
-### AHP devolve CR > 0,10 (inconsistente)
-- A matriz par-a-par tem julgamentos contraditórios. Identifica as comparações mais extremas (valores ≥ 7) e ajusta-as gradualmente. A app continua a calcular pesos mesmo com CR alto, mas reporta-o.
-
-### A app fica lenta com muitas alternativas (>100)
-- O ELECTRE e PROMETHEE têm complexidade O(N²·M). Acima de 200 alternativas considera filtrar previamente ou usar apenas TOPSIS/MAUT (lineares).
-
-### Sensibilidade TOPSIS mostra resultados estranhos
-- Se um critério tiver peso muito baixo (< 0,03) a variação ±20% é desprezável e os error bars ficam quase invisíveis. Aumenta a percentagem de sensibilidade na sidebar.
+1. **Aba 📋 Dados** → cole a matriz AHP + tabela de alternativas → prima Processar
+2. **Aba 🔍 AHP** → confirme **CR < 0.10** (se não, aplique a sugestão na sua matriz original e cole novamente)
+3. **Aba 🏆 Dashboard** → leia o Top-3, a convergência e a margem de segurança
+4. **Abas 🎯 TOPSIS / 📈 PROMETHEE II / 📊 COPRAS** → consulte detalhe de cada modelo (passos, normalizações, ranking, tornado de sensibilidade individual)
 
 ---
 
-## Notas metodológicas
+## 7. Resolução de problemas
 
-### Limitações conhecidas
-
-- **ANP, DEMATEL e Fuzzy ANP** usam um proxy data-driven baseado em correlações entre critérios. Numa aplicação rigorosa, estas matrizes seriam elicitadas directamente do decisor. Esta abordagem é defensável academicamente quando se cita explicitamente como "automated dependency estimation" e se reconhece a limitação.
-
-- **Fuzzy AHP/TOPSIS** usam spread fixo (±20% / ±10%) como aproximação dos números triangulares. Implementações rigorosas requerem que o decisor defina o spread por julgamento.
-
-- **AHP com matriz fornecida no caso MCG** (Q5.2 do questionário) apresenta CR ≈ 0,15. Devem ser iterados 1-2 julgamentos com o BU Manager para obter CR < 0,10 antes da publicação final.
-
-### Convenções
-
-- Todas as escalas ordinais (1-5) são tratadas como contínuas para fins de normalização.
-- A1 (caso MCG) tem valor potencial ~17x superior ao próximo. Modelos baseados em normalização vectorial (TOPSIS) e min-max (MAUT, ANP, DEMATEL) suavizam o efeito; PROMETHEE com função `usual` e ELECTRE com limiares apertados mantêm a dominância. Esta divergência **é informativa**, não um erro.
-
-### Referências
-
-- Saaty, T. L. (1980). *The Analytic Hierarchy Process*. McGraw-Hill.
-- Hwang, C.-L., Yoon, K. (1981). *Multiple Attribute Decision Making: Methods and Applications*. Springer.
-- Roy, B. (1996). *Multicriteria Methodology for Decision Aiding*. Kluwer.
-- Brans, J. P., Vincke, P. (1985). A Preference Ranking Organisation Method. *Management Science*, 31(6).
-- Opricovic, S., Tzeng, G.-H. (2004). Compromise solution by MCDM methods: A comparative analysis of VIKOR and TOPSIS. *EJOR*, 156(2).
-- Zavadskas, E. K., Kaklauskas, A. (1996). *Multiple Criteria Evaluation of Buildings*. Vilnius Tech.
-- Gabus, A., Fontela, E. (1972). *World Problems, an Invitation to Further Thought*. Battelle Institute.
-- Chang, D.-Y. (1996). Applications of the extent analysis method on fuzzy AHP. *EJOR*, 95(3).
+| Sintoma | Causa | Solução |
+|---|---|---|
+| "Não encontrei linha de cabeçalho..." | O paste da matriz AHP não tem códigos de critério no cabeçalho | Cole com a linha do cabeçalho incluída |
+| "Critério 'XX' não aparece na tabela de alternativas" | Códigos não coincidem entre os 2 pastes | Use **exactamente** os mesmos códigos (case-sensitive) |
+| "Códigos das linhas ≠ códigos das colunas" | A matriz AHP não é quadrada ou tem códigos diferentes em linhas vs colunas | Verifique que as linhas e as colunas da matriz AHP usam os mesmos códigos |
+| Top-1 nunca muda em sensibilidade | Decisão genuinamente robusta — o Top-1 domina muito o critério mais pesado | Veja a "Margem de Segurança" — se for `>50%` em todos os critérios, é mesmo robusta |
+| CR ≥ 0.10 (inconsistente) | Os seus julgamentos são contraditórios | Vá à aba 🔍 AHP — mostra **qual par** está inconsistente e que **valor Saaty** colocar |
 
 ---
 
-## Licença
+## 8. Limites técnicos
 
-Material académico desenvolvido para a UC Modelos de Decisão (MEGI ISEL 2025/2026). Caso de estudo MCG. Livre para uso não-comercial com atribuição.
+- Até **50 alternativas × 15 critérios**
+- Precisão de **5 casas decimais** em todos os inputs
+- AHP CR usa tabela RI até n=15 (Saaty)
+- Os pesos são sempre **normalizados** para Σ=1 antes de qualquer cálculo
+
+---
+
+## 9. Os 4 modelos — em uma linha cada
+
+| Modelo | Conceito | Fórmula final |
+|---|---|---|
+| **AHP** (Saaty 1980) | Comparação par-a-par → vector de pesos validado por CR | Score = Σ wⱼ · uⱼ(xᵢⱼ) |
+| **TOPSIS** (Hwang & Yoon 1981) | Distância à solução ideal (A⁺) e anti-ideal (A⁻) | CC* = D⁻ / (D⁺ + D⁻) |
+| **PROMETHEE II** (Brans 1985) | Fluxos de preferência par-a-par | φ = φ⁺ − φ⁻ |
+| **COPRAS** (Zavadskas 1996) | Proporção benefícios / custos | Q = S⁺ + (S⁻min · Σ S⁻) / (S⁻ · Σ 1/S⁻) |
+
+Todos respeitam o **tipo (max/min)** definido na coluna MAX/MIN.
+
+---
+
+*MCDM Dashboard · Ferramenta de Apoio à Decisão · ISEL · MEGI · Modelos de Decisão 2025/2026*
